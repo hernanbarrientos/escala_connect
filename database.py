@@ -92,10 +92,21 @@ def add_voluntario(nome, telefone, limite_mes):
         conn.rollback()
         st.error(f"Erro ao adicionar voluntário: {e}")
 
-def view_all_voluntarios():
+def view_all_voluntarios(include_inactive=False):
+    """ 
+    Retorna um DataFrame com os voluntários.
+    Por padrão, retorna apenas os ativos. Se include_inactive for True, retorna todos.
+    """
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
-    return pd.read_sql("SELECT * FROM voluntarios WHERE ativo = TRUE ORDER BY nome_voluntario ASC", conn)
+    
+    query = "SELECT * FROM voluntarios"
+    if not include_inactive:
+        query += " WHERE ativo = TRUE"
+    
+    query += " ORDER BY nome_voluntario ASC"
+    
+    return pd.read_sql(query, conn)
 
 def get_voluntario_by_id(id_voluntario):
     conn = ensure_connection()
@@ -311,3 +322,93 @@ def get_escala_completa(ano, mes):
     ORDER BY e.data_evento, f.nome_funcao;
     """
     return pd.read_sql(query, conn, params=(ano, mes))
+
+# --- Funções para a tabela 'grupos_vinculados' ---
+
+def create_grupo_vinculado(nome_grupo, ids_voluntarios):
+    """ Cria um novo grupo e vincula os voluntários a ele. """
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            # 1. Cria o grupo e obtém o ID gerado
+            cur.execute("INSERT INTO grupos_vinculados (nome_grupo) VALUES (%s) RETURNING id_grupo", (nome_grupo,))
+            id_novo_grupo = cur.fetchone()[0]
+            
+            # 2. Atualiza a tabela de voluntários com o novo ID do grupo
+            # psycopg2 exige uma tupla, mesmo para um único item no IN
+            cur.execute(
+                "UPDATE voluntarios SET id_grupo = %s WHERE id_voluntario IN %s",
+                (id_novo_grupo, tuple(ids_voluntarios))
+            )
+        conn.commit()
+        st.success(f"Grupo '{nome_grupo}' criado com sucesso!")
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Erro ao criar grupo: {e}")
+        print(f"ERRO DETALHADO [create_grupo_vinculado]: {e}")
+
+def get_all_grupos_com_membros():
+    """ Retorna um DataFrame com todos os grupos e uma lista de seus membros. """
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    
+    query = """
+    SELECT 
+        gv.id_grupo, 
+        gv.nome_grupo, 
+        STRING_AGG(v.nome_voluntario, ', ' ORDER BY v.nome_voluntario) as membros
+    FROM grupos_vinculados gv
+    JOIN voluntarios v ON gv.id_grupo = v.id_grupo
+    GROUP BY gv.id_grupo, gv.nome_grupo
+    ORDER BY gv.nome_grupo;
+    """
+    return pd.read_sql(query, conn)
+
+def get_voluntarios_in_grupo(id_grupo):
+    """ Retorna uma lista de IDs de voluntários que pertencem a um grupo. """
+    conn = ensure_connection()
+    if conn is None: return []
+    df = pd.read_sql(f"SELECT id_voluntario FROM voluntarios WHERE id_grupo = {id_grupo}", conn)
+    return df['id_voluntario'].tolist()
+
+def update_grupo_vinculado(id_grupo, novo_nome, novos_ids_voluntarios):
+    """ Atualiza o nome e os membros de um grupo. """
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            # 1. Atualiza o nome do grupo
+            cur.execute("UPDATE grupos_vinculados SET nome_grupo = %s WHERE id_grupo = %s", (novo_nome, id_grupo))
+            
+            # 2. Remove o vínculo de todos os voluntários que pertenciam a este grupo (limpeza)
+            cur.execute("UPDATE voluntarios SET id_grupo = NULL WHERE id_grupo = %s", (id_grupo,))
+            
+            # 3. Adiciona o vínculo para a nova lista de voluntários
+            if novos_ids_voluntarios:
+                cur.execute(
+                    "UPDATE voluntarios SET id_grupo = %s WHERE id_voluntario IN %s",
+                    (id_grupo, tuple(novos_ids_voluntarios))
+                )
+        conn.commit()
+        st.success(f"Grupo '{novo_nome}' atualizado com sucesso!")
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Erro ao atualizar grupo: {e}")
+        print(f"ERRO DETALHADO [update_grupo_vinculado]: {e}")
+
+def delete_grupo_vinculado(id_grupo):
+    """ Deleta um grupo (os voluntários ficam sem grupo). """
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            # O 'ON DELETE SET NULL' na tabela voluntarios já cuida de desvincular os voluntários.
+            # Aqui só precisamos deletar o grupo em si.
+            cur.execute("DELETE FROM grupos_vinculados WHERE id_grupo = %s", (id_grupo,))
+        conn.commit()
+        st.success("Grupo deletado com sucesso!")
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Erro ao deletar grupo: {e}")
+        print(f"ERRO DETALHADO [delete_grupo_vinculado]: {e}")

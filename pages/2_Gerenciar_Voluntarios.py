@@ -69,10 +69,15 @@ with tab_cadastrar:
                 st.success(f"Voluntário {nome} cadastrado com sucesso!")
 
 # --- ABA DE EDIÇÃO ---
+# --- ABA DE EDIÇÃO ---
 with tab_editar:
     st.header("Edição de Voluntários")
 
-    df_voluntarios_edit = view_all_voluntarios()
+    # --- NOVO CHECKBOX DE FILTRO ---
+    show_inactive = st.checkbox("Mostrar voluntários inativos na lista")
+
+    # Usa o checkbox para decidir quais voluntários buscar
+    df_voluntarios_edit = view_all_voluntarios(include_inactive=show_inactive)
     lista_nomes_voluntarios = sorted(df_voluntarios_edit['nome_voluntario'].tolist())
     
     OPCAO_SELECIONE = "--- Selecione um voluntário ---"
@@ -107,7 +112,6 @@ with tab_editar:
 
             # --- LAYOUT EM COLUNAS PARA CHECKBOXES ---
             col_funcoes_edit, col_disponibilidade_edit, col_status_edit = st.columns(3)
-
             with col_funcoes_edit:
                 st.subheader("Funções que pode exercer")
                 funcoes_atuais_ids = get_funcoes_of_voluntario(id_voluntario_atual)
@@ -131,8 +135,7 @@ with tab_editar:
                 ativo_edit = st.checkbox("Voluntário Ativo", value=voluntario_data['ativo'])
                 
                 mes_ano_atual = datetime.now().strftime('%Y-%m')
-                # O nome do mês atual em português
-                nome_mes_pt = "Agosto" # Substituído para corresponder ao seu ambiente
+                nome_mes_pt = "Agosto"
                 
                 indisponivel_mes_atual = check_indisponibilidade(id_voluntario_atual, mes_ano_atual)
                 nao_escalar_mes = st.checkbox(f"Não escalar em {nome_mes_pt}/{datetime.now().year}", value=indisponivel_mes_atual)
