@@ -1,77 +1,169 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime # LINHA ADICIONADA
-from database import (
-    create_events_for_month, get_events_for_month, 
-    view_all_funcoes, get_escala_completa
-)
+from datetime import datetime
+import calendar
+from database import * # Importa tudo para simplificar
+from pdf_generator import gerar_pdf_escala
 
 st.set_page_config(page_title="Gerar Escala", layout="wide")
-st.title("🗓️ Gerador de Escalas Mensais")
+st.title("🗓️ Gerador e Editor de Escalas Mensais")
 
-# --- SELEÇÃO DE MÊS E ANO ---
+# --- SELEÇÃO DE MÊS E ANO E BOTÕES DE AÇÃO ---
 hoje = datetime.now()
-# Nomes dos meses em português
-meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 
-            7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+try:
+    calendar.setlocale(calendar.LC_ALL, 'pt_BR.UTF-8')
+    meses_pt = {m: calendar.month_name[m].capitalize() for m in range(1, 13)}
+except:
+    meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 
+                7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns([2,2,3,3])
 with col1:
-    mes_selecionado_nome = st.selectbox("Mês", options=list(meses_pt.values()), index=hoje.month - 1)
-    # Converte o nome do mês de volta para número
-    mes_selecionado_num = list(meses_pt.keys())[list(meses_pt.values()).index(mes_selecionado_nome)]
-
+    mes_selecionado_num = st.selectbox("Mês", options=list(meses_pt.keys()), format_func=lambda m: meses_pt[m], index=hoje.month - 1)
 with col2:
-    ano_selecionado = st.number_input("Ano", min_value=hoje.year - 1, max_value=hoje.year + 5, value=hoje.year)
+    ano_selecionado = st.number_input("Ano", min_value=hoje.year, max_value=hoje.year + 5, value=hoje.year)
 
 with col3:
-    st.write("") # Espaçador
-    st.write("") # Espaçador
-    if st.button("Gerar Esqueleto da Escala para o Mês"):
+    st.write("")
+    if st.button("Criar Eventos do Mês"):
         create_events_for_month(ano_selecionado, mes_selecionado_num)
+        st.rerun()
+with col4:
+    st.write("")
+    if st.button("Preencher Automaticamente", type="primary"):
+        gerar_escala_automatica(ano_selecionado, mes_selecionado_num)
         st.rerun()
 
 st.divider()
+st.header(f"Escala Editável de {meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}")
 
-# --- VISUALIZAÇÃO DA ESCALA ---
-st.header(f"Escala de {mes_selecionado_nome} de {ano_selecionado}")
-
+# --- LÓGICA DE EXIBIÇÃO E EDIÇÃO ---
+escala_df = get_escala_completa(ano_selecionado, mes_selecionado_num)
 eventos_do_mes = get_events_for_month(ano_selecionado, mes_selecionado_num)
-escala_do_mes = get_escala_completa(ano_selecionado, mes_selecionado_num)
 todas_funcoes = view_all_funcoes()
 
 if eventos_do_mes.empty:
-    st.info("Nenhum evento encontrado para este mês. Clique no botão acima para gerar o esqueleto da escala.")
+    st.info("Nenhum evento para este mês. Clique em 'Criar Eventos do Mês' para começar.")
 else:
-    for _, evento in eventos_do_mes.iterrows():
-        # Corrigindo a formatação do dia da semana para Português
-        dias_semana_pt = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
-        dia_semana_num = evento['data_evento'].weekday()
-        dia_semana_nome = dias_semana_pt[dia_semana_num]
-        data_formatada = evento['data_evento'].strftime('%d/%m/%Y')
+    # --- PREPARAÇÃO DA TABELA PARA EXIBIÇÃO ---
+    tabela_para_exibir = pd.DataFrame() # Começa vazia
+    
+    if not escala_df.empty:
+        escala_df['data_evento'] = pd.to_datetime(escala_df['data_evento'])
         
-        st.subheader(f"📅 {evento['nome_servico']} - {data_formatada} ({dia_semana_nome})")
+        todas_cotas = get_cotas_all_servicos()
+        funcoes_com_cota_maior_que_um = todas_cotas[todas_cotas['quantidade_necessaria'] > 1]['id_funcao'].unique()
         
-        col_funcao, col_voluntario = st.columns(2)
+        def criar_nome_vaga(row):
+            if row['id_funcao'] in funcoes_com_cota_maior_que_um:
+                return f"{row['nome_funcao']} {row['funcao_instancia']}"
+            return row['nome_funcao']
+        
+        escala_df['Vaga'] = escala_df.apply(criar_nome_vaga, axis=1)
+        escala_df['Dia'] = escala_df['data_evento'].dt.strftime('%d/%m') + " - " + escala_df['nome_servico']
+                
+        tabela_para_exibir = escala_df.pivot_table(index='Vaga', columns='Dia', values='nome_voluntario', aggfunc='first').fillna("**VAGO**")
+        
+        ordem_colunas = sorted(escala_df['Dia'].unique(), key=lambda d: datetime.strptime(d.split(' - ')[0], '%d/%m'))
+        tabela_para_exibir = tabela_para_exibir[ordem_colunas]
+        
+        ordem_prioridade = ["Líder de Escala", "Link", "Portão", "Store", "Igreja"]
+        todas_vagas_ordenadas = []
+        funcoes_unicas = escala_df[['nome_funcao']].drop_duplicates()
+        
+        for f in ordem_prioridade:
+            if f in funcoes_unicas['nome_funcao'].values:
+                max_cota = escala_df[escala_df['nome_funcao'] == f]['funcao_instancia'].max()
+                if max_cota == 1:
+                    todas_vagas_ordenadas.append(f)
+                else:
+                    for i in range(1, int(max_cota) + 1):
+                        todas_vagas_ordenadas.append(f"{f} {i}")
 
-        with col_funcao:
-            st.markdown("**Função**")
-        with col_voluntario:
-            st.markdown("**Voluntário Escalado**")
+        if 'Apoio' in funcoes_unicas['nome_funcao'].values:
+            max_apoios = escala_df[escala_df['nome_funcao'] == 'Apoio']['funcao_instancia'].max()
+            if pd.notna(max_apoios):
+                for i in range(1, int(max_apoios) + 1):
+                    todas_vagas_ordenadas.append(f"Apoio {i}")
+                
+        tabela_para_exibir = tabela_para_exibir.reindex(todas_vagas_ordenadas).dropna(how='all')
 
-        for _, funcao in todas_funcoes.iterrows():
-            escala_especifica = escala_do_mes[
-                (escala_do_mes['id_evento'] == evento['id_evento']) & 
-                (escala_do_mes['id_funcao'] == funcao['id_funcao'])
-            ]
-            nome_voluntario = escala_especifica['nome_voluntario'].iloc[0] if not escala_especifica.empty else "---"
+    # Transpõe a tabela para o layout final (Datas nas Linhas)
+    tabela_final = tabela_para_exibir.transpose()
+
+    # --- CONFIGURAÇÃO DO st.data_editor ---
+    opcoes_por_funcao = {"**VAGO**": ["**VAGO**"]}
+    for _, funcao in todas_funcoes.iterrows():
+        voluntarios_aptos = get_voluntarios_for_funcao(funcao['id_funcao'])
+        opcoes_por_funcao[funcao['nome_funcao']] = ["**VAGO**"] + sorted(voluntarios_aptos['nome_voluntario'].tolist())
+
+    configuracao_colunas = {}
+    for coluna in tabela_final.columns:
+        funcao_base = ''.join(filter(lambda x: not x.isdigit(), coluna)).strip()
+        if funcao_base in opcoes_por_funcao:
+            configuracao_colunas[coluna] = st.column_config.SelectboxColumn(
+                label=coluna, options=opcoes_por_funcao[funcao_base], required=True
+            )
+    
+    st.info("Clique duas vezes em uma célula para editar o voluntário. As alterações são salvas automaticamente.")
+    
+    if 'escala_antiga' not in st.session_state or not st.session_state.escala_antiga.index.equals(tabela_final.index) or not st.session_state.escala_antiga.columns.equals(tabela_final.columns):
+        st.session_state.escala_antiga = tabela_final.copy()
+    
+    escala_editada = st.data_editor(
+        tabela_final, 
+        column_config=configuracao_colunas, 
+        use_container_width=True, 
+        key="editor_escala"
+    )
+
+    # --- LÓGICA PARA DETECTAR E SALVAR MUDANÇAS ---
+    if not escala_editada.equals(st.session_state.escala_antiga):
+        try:
+            diferencas = st.session_state.escala_antiga.compare(escala_editada)
             
-            with col_funcao:
-                st.write(funcao['nome_funcao'])
-            with col_voluntario:
-                st.selectbox(
-                    f"sel_{evento['id_evento']}_{funcao['id_funcao']}",
-                    options=["---"] + ["Em breve..."],
-                    label_visibility="collapsed"
-                )
-        st.write("---")
+            for indice, linha in diferencas.iterrows():
+                data_str, servico_str = indice.split(' - ')
+                data_evento_obj = datetime.strptime(f"{data_str}/{ano_selecionado}", "%d/%m/%Y").date()
+                id_evento = eventos_do_mes[eventos_do_mes['data_evento'] == data_evento_obj]['id_evento'].iloc[0]
+
+                for col_funcao in linha.dropna().index.get_level_values(0).unique():
+                    valor_novo = escala_editada.loc[indice, col_funcao]
+                    funcao_base = ''.join(filter(lambda x: not x.isdigit(), col_funcao)).strip()
+                    instancia = int(''.join(filter(str.isdigit, col_funcao)) or 1)
+                    id_funcao = todas_funcoes[todas_funcoes['nome_funcao'] == funcao_base]['id_funcao'].iloc[0]
+                    id_novo_voluntario = get_voluntario_by_name(valor_novo)
+                    update_escala_entry(id_evento, id_funcao, id_novo_voluntario, instancia)
+            
+            st.session_state.escala_antiga = escala_editada.copy()
+            st.toast("Alteração salva!", icon="✅")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Ocorreu um erro ao salvar: {e}")
+
+st.divider()
+st.header("📄 Exportar Escala")
+
+escala_completa_df = get_escala_completa(ano_selecionado, mes_selecionado_num)
+
+if not escala_completa_df.empty:
+    # O botão para GERAR o PDF fica dentro do form
+    with st.form("form_pdf"):
+        submitted = st.form_submit_button("Gerar PDF para Impressão", use_container_width=True, type="primary")
+        if submitted:
+            with st.spinner("Criando PDF..."):
+                mes_ano_formatado = f"{meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}"
+                # Guarda os bytes do PDF no session_state
+                st.session_state.pdf_bytes = gerar_pdf_escala(escala_completa_df, mes_ano_formatado)
+    
+    # O botão para BAIXAR o PDF fica FORA do form
+    if 'pdf_bytes' in st.session_state and st.session_state.pdf_bytes:
+        st.download_button(
+            label="✅ PDF Pronto! Clique aqui para baixar.",
+            data=st.session_state.pdf_bytes,
+            file_name=f"escala_connect_{ano_selecionado}_{mes_selecionado_num:02d}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+else:
+    st.info("Gere e/ou preencha uma escala primeiro para poder exportar.")

@@ -1,33 +1,24 @@
+# database.py - VERSÃO FINAL, COMPLETA E ESTÁVEL
 import streamlit as st
 import psycopg2
 import pandas as pd
-import calendar
 from datetime import datetime
+import calendar
+import random
 
-# --- NOVO GERENCIADOR DE CONEXÃO ---
-# Esta função será a única responsável por fornecer uma conexão válida.
-# O @st.cache_resource garante que tentaremos reutilizar a mesma conexão.
 @st.cache_resource
 def get_connection():
     try:
-        # Tenta criar uma conexão
-        conn = psycopg2.connect(**st.secrets["postgres"])
-        return conn
+        return psycopg2.connect(**st.secrets["postgres"])
     except Exception as e:
         st.error(f"Não foi possível conectar ao banco de dados: {e}")
         return None
 
-# Função para verificar e reconectar se necessário
 def ensure_connection():
-    """Garante que a conexão está ativa, reconectando se necessário."""
     try:
-        # Tenta pegar a conexão do cache
         conn = get_connection()
-        # Verifica se a conexão está fechada ou com problemas
         if conn is None or conn.closed != 0:
-            # Limpa o cache para forçar uma nova conexão na próxima chamada
             st.cache_resource.clear()
-            # Tenta obter uma nova conexão
             conn = get_connection()
         return conn
     except Exception as e:
@@ -35,9 +26,7 @@ def ensure_connection():
         st.cache_resource.clear()
         return None
 
-# --- FUNÇÕES DAS TABELAS (AGORA MAIS ROBUSTAS) ---
-# Todas as funções agora chamarão ensure_connection() no início
-
+# --- CRUD FUNÇÕES ---
 def add_funcao(nome_funcao, descricao=""):
     conn = ensure_connection()
     if conn is None: return
@@ -47,8 +36,7 @@ def add_funcao(nome_funcao, descricao=""):
         conn.commit()
         st.success(f"Função '{nome_funcao}' adicionada com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao adicionar função: {e}")
+        conn.rollback(); st.error(f"Erro ao adicionar função: {e}")
 
 def view_all_funcoes():
     conn = ensure_connection()
@@ -64,8 +52,7 @@ def update_funcao(id_funcao, novo_nome, nova_descricao):
         conn.commit()
         st.success("Função atualizada com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao atualizar função: {e}")
+        conn.rollback(); st.error(f"Erro ao atualizar função: {e}")
 
 def delete_funcao(id_funcao):
     conn = ensure_connection()
@@ -76,11 +63,9 @@ def delete_funcao(id_funcao):
         conn.commit()
         st.success("Função deletada com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao deletar função: {e}")
+        conn.rollback(); st.error(f"Erro ao deletar função: {e}")
 
-# --- Funções para a tabela 'voluntarios' ---
-
+# --- CRUD VOLUNTÁRIOS ---
 def add_voluntario(nome, telefone, limite_mes):
     conn = ensure_connection()
     if conn is None: return
@@ -89,23 +74,15 @@ def add_voluntario(nome, telefone, limite_mes):
             cur.execute("INSERT INTO voluntarios (nome_voluntario, telefone, limite_escalas_mes) VALUES (%s, %s, %s)", (nome, telefone, limite_mes))
         conn.commit()
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao adicionar voluntário: {e}")
+        conn.rollback(); st.error(f"Erro ao adicionar voluntário: {e}")
 
 def view_all_voluntarios(include_inactive=False):
-    """ 
-    Retorna um DataFrame com os voluntários.
-    Por padrão, retorna apenas os ativos. Se include_inactive for True, retorna todos.
-    """
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
-    
     query = "SELECT * FROM voluntarios"
     if not include_inactive:
         query += " WHERE ativo = TRUE"
-    
     query += " ORDER BY nome_voluntario ASC"
-    
     return pd.read_sql(query, conn)
 
 def get_voluntario_by_id(id_voluntario):
@@ -113,6 +90,13 @@ def get_voluntario_by_id(id_voluntario):
     if conn is None: return None
     df = pd.read_sql(f"SELECT * FROM voluntarios WHERE id_voluntario = {id_voluntario}", conn)
     return df.iloc[0] if not df.empty else None
+
+def get_voluntario_by_name(nome_voluntario):
+    conn = ensure_connection()
+    if conn is None or not nome_voluntario or nome_voluntario == "**VAGO**": return None
+    query = "SELECT id_voluntario FROM voluntarios WHERE nome_voluntario = %s"
+    df = pd.read_sql(query, conn, params=(nome_voluntario,))
+    return int(df['id_voluntario'].iloc[0]) if not df.empty else None
 
 def update_voluntario(id_voluntario, nome, telefone, limite_mes, ativo):
     conn = ensure_connection()
@@ -122,12 +106,9 @@ def update_voluntario(id_voluntario, nome, telefone, limite_mes, ativo):
             cur.execute("UPDATE voluntarios SET nome_voluntario = %s, telefone = %s, limite_escalas_mes = %s, ativo = %s WHERE id_voluntario = %s", (nome, telefone, limite_mes, ativo, id_voluntario))
         conn.commit()
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao atualizar dados básicos do voluntário.")
-        print(f"ERRO DETALHADO [update_voluntario]: {e}")
+        conn.rollback(); st.error(f"Erro ao atualizar voluntário: {e}")
 
-# --- Funções para a tabela 'voluntario_funcoes' ---
-
+# --- CRUD VOLUNTARIO_FUNCOES ---
 def get_funcoes_of_voluntario(id_voluntario):
     conn = ensure_connection()
     if conn is None: return []
@@ -145,12 +126,15 @@ def update_funcoes_of_voluntario(id_voluntario, lista_ids_funcoes):
                 cur.executemany("INSERT INTO voluntario_funcoes (id_voluntario, id_funcao) VALUES (%s, %s)", args)
         conn.commit()
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao atualizar funções do voluntário.")
-        print(f"ERRO DETALH-ADO [update_funcoes_of_voluntario]: {e}")
+        conn.rollback(); st.error(f"Erro ao atualizar funções do voluntário: {e}")
 
-# --- Funções para a tabela 'servicos_fixos' ---
+def get_voluntarios_for_funcao(id_funcao):
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    query = "SELECT v.id_voluntario, v.nome_voluntario FROM voluntarios v JOIN voluntario_funcoes vf ON v.id_voluntario = vf.id_voluntario WHERE v.ativo = TRUE AND vf.id_funcao = %s ORDER BY v.nome_voluntario"
+    return pd.read_sql(query, conn, params=(int(id_funcao),))
 
+# --- CRUD SERVIÇOS_FIXOS ---
 def add_servico_fixo(nome, dia_da_semana):
     conn = ensure_connection()
     if conn is None: return
@@ -160,8 +144,7 @@ def add_servico_fixo(nome, dia_da_semana):
         conn.commit()
         st.success(f"Serviço '{nome}' adicionado com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao adicionar serviço: {e}")
+        conn.rollback(); st.error(f"Erro ao adicionar serviço: {e}")
 
 def view_all_servicos_fixos():
     conn = ensure_connection()
@@ -177,8 +160,7 @@ def update_servico_fixo(id_servico, nome, dia_da_semana, ativo):
         conn.commit()
         st.success("Serviço atualizado com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao atualizar serviço: {e}")
+        conn.rollback(); st.error(f"Erro ao atualizar serviço: {e}")
 
 def delete_servico_fixo(id_servico):
     conn = ensure_connection()
@@ -189,11 +171,9 @@ def delete_servico_fixo(id_servico):
         conn.commit()
         st.success("Serviço deletado com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao deletar serviço: {e}")
+        conn.rollback(); st.error(f"Erro ao deletar serviço: {e}")
 
-# --- Funções para a tabela 'voluntario_disponibilidade' ---
-
+# --- CRUD VOLUNTARIO_DISPONIBILIDADE ---
 def get_disponibilidade_of_voluntario(id_voluntario):
     conn = ensure_connection()
     if conn is None: return []
@@ -211,16 +191,26 @@ def update_disponibilidade_of_voluntario(id_voluntario, lista_ids_servicos):
                 cur.executemany("INSERT INTO voluntario_disponibilidade (id_voluntario, id_servico) VALUES (%s, %s)", args)
         conn.commit()
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao atualizar disponibilidade do voluntário.")
-        print(f"ERRO DETALHADO [update_disponibilidade_of_voluntario]: {e}")
+        conn.rollback(); st.error(f"Erro ao atualizar disponibilidade: {e}")
 
-# --- Funções para a tabela 'voluntario_indisponibilidade' ---
+def update_apenas_disponibilidade(id_voluntario, lista_ids_servicos):
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM voluntario_disponibilidade WHERE id_voluntario = %s", (id_voluntario,))
+            if lista_ids_servicos:
+                args = [(id_voluntario, id_servico) for id_servico in lista_ids_servicos]
+                cur.executemany("INSERT INTO voluntario_disponibilidade (id_voluntario, id_servico) VALUES (%s, %s)", args)
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao atualizar disponibilidade: {e}")
 
+# --- CRUD VOLUNTARIO_INDISPONIBILIDADE ---
 def check_indisponibilidade(id_voluntario, mes_ano):
     conn = ensure_connection()
     if conn is None: return False
-    df = pd.read_sql("SELECT * FROM voluntario_indisponibilidade WHERE id_voluntario = %s AND mes_ano = %s", conn, params=(id_voluntario, mes_ano))
+    df = pd.read_sql("SELECT 1 FROM voluntario_indisponibilidade WHERE id_voluntario = %s AND mes_ano = %s", conn, params=(id_voluntario, mes_ano))
     return not df.empty
 
 def set_indisponibilidade(id_voluntario, mes_ano, indisponivel):
@@ -234,181 +224,349 @@ def set_indisponibilidade(id_voluntario, mes_ano, indisponivel):
                 cur.execute("DELETE FROM voluntario_indisponibilidade WHERE id_voluntario = %s AND mes_ano = %s", (id_voluntario, mes_ano))
         conn.commit()
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao definir indisponibilidade: {e}")
-        print(f"ERRO DETALHADO [set_indisponibilidade]: {e}")
+        conn.rollback(); st.error(f"Erro ao definir indisponibilidade: {e}")
 
-# --- Funções para Geração e Visualização da Escala ---
-
-def create_events_for_month(ano, mes):
-    """ Cria os registros de eventos para um determinado mês e ano. """
-    conn = ensure_connection()
-    if conn is None: return False
-    
-    # Busca todos os serviços fixos (Domingo Manhã, Quinta, etc.)
-    servicos_fixos = view_all_servicos_fixos()
-    if servicos_fixos.empty:
-        st.warning("Nenhum serviço fixo cadastrado. Adicione serviços na página 'Gerenciar Serviços'.")
-        return False
-
-    try:
-        with conn.cursor() as cur:
-            # Primeiro, deleta os eventos existentes para este mês para evitar duplicatas
-            cur.execute("DELETE FROM eventos WHERE EXTRACT(YEAR FROM data_evento) = %s AND EXTRACT(MONTH FROM data_evento) = %s", (ano, mes))
-            
-            # Pega o número de dias no mês
-            _, num_dias = calendar.monthrange(ano, mes)
-            
-            eventos_criados = 0
-            # Itera sobre cada dia do mês
-            for dia in range(1, num_dias + 1):
-                data_atual = datetime(ano, mes, dia).date()
-                dia_da_semana_atual = data_atual.weekday() # Segunda=0, Domingo=6
-                # Ajuste para nossa convenção: Domingo=0, Segunda=1...
-                dia_da_semana_ajustado = (dia_da_semana_atual + 1) % 7
-                
-                # Verifica se há algum serviço fixo para este dia da semana
-                for _, servico in servicos_fixos.iterrows():
-                    if servico['dia_da_semana'] == dia_da_semana_ajustado:
-                        # Insere o evento no banco de dados
-                        cur.execute(
-                            "INSERT INTO eventos (id_servico_fixo, data_evento) VALUES (%s, %s)",
-                            (int(servico['id_servico']), data_atual)
-                        )
-                        eventos_criados += 1
-            conn.commit()
-            st.success(f"{eventos_criados} eventos criados com sucesso para {mes}/{ano}!")
-            return True
-    except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao criar eventos: {e}")
-        print(f"ERRO DETALHADO [create_events_for_month]: {e}")
-        return False
-
-def get_events_for_month(ano, mes):
-    """ Busca todos os eventos de um mês, juntando com o nome do serviço. """
+# --- CRUD GRUPOS ---
+def get_all_grupos_com_membros(_cache_buster=None):
+    """ Retorna um DataFrame com todos os grupos e seus membros (VERSÃO COM QUEBRA DE CACHE). """
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
-    
     query = """
-    SELECT e.id_evento, e.data_evento, sf.nome_servico
-    FROM eventos e
-    JOIN servicos_fixos sf ON e.id_servico_fixo = sf.id_servico
-    WHERE EXTRACT(YEAR FROM e.data_evento) = %s AND EXTRACT(MONTH FROM e.data_evento) = %s
-    ORDER BY e.data_evento ASC;
-    """
-    return pd.read_sql(query, conn, params=(ano, mes))
-
-def get_escala_completa(ano, mes):
-    """ Busca a escala completa de um mês com todos os nomes. """
-    conn = ensure_connection()
-    if conn is None: return pd.DataFrame()
-
-    query = """
-    SELECT 
-        e.id_evento, 
-        e.data_evento, 
-        sf.nome_servico,
-        f.id_funcao,
-        f.nome_funcao,
-        v.id_voluntario,
-        v.nome_voluntario
-    FROM escala esc
-    JOIN eventos e ON esc.id_evento = e.id_evento
-    JOIN funcoes f ON esc.id_funcao = f.id_funcao
-    JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
-    JOIN servicos_fixos sf ON e.id_servico_fixo = sf.id_servico
-    WHERE EXTRACT(YEAR FROM e.data_evento) = %s AND EXTRACT(MONTH FROM e.data_evento) = %s
-    ORDER BY e.data_evento, f.nome_funcao;
-    """
-    return pd.read_sql(query, conn, params=(ano, mes))
-
-# --- Funções para a tabela 'grupos_vinculados' ---
-
-def create_grupo_vinculado(nome_grupo, ids_voluntarios):
-    """ Cria um novo grupo e vincula os voluntários a ele. """
-    conn = ensure_connection()
-    if conn is None: return
-    try:
-        with conn.cursor() as cur:
-            # 1. Cria o grupo e obtém o ID gerado
-            cur.execute("INSERT INTO grupos_vinculados (nome_grupo) VALUES (%s) RETURNING id_grupo", (nome_grupo,))
-            id_novo_grupo = cur.fetchone()[0]
-            
-            # 2. Atualiza a tabela de voluntários com o novo ID do grupo
-            # psycopg2 exige uma tupla, mesmo para um único item no IN
-            cur.execute(
-                "UPDATE voluntarios SET id_grupo = %s WHERE id_voluntario IN %s",
-                (id_novo_grupo, tuple(ids_voluntarios))
-            )
-        conn.commit()
-        st.success(f"Grupo '{nome_grupo}' criado com sucesso!")
-    except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao criar grupo: {e}")
-        print(f"ERRO DETALHADO [create_grupo_vinculado]: {e}")
-
-def get_all_grupos_com_membros():
-    """ Retorna um DataFrame com todos os grupos e uma lista de seus membros. """
-    conn = ensure_connection()
-    if conn is None: return pd.DataFrame()
-    
-    query = """
-    SELECT 
-        gv.id_grupo, 
-        gv.nome_grupo, 
-        STRING_AGG(v.nome_voluntario, ', ' ORDER BY v.nome_voluntario) as membros
+    SELECT
+        gv.id_grupo, gv.nome_grupo,
+        COALESCE(membros.lista_membros, 'Nenhum membro vinculado') as membros
     FROM grupos_vinculados gv
-    JOIN voluntarios v ON gv.id_grupo = v.id_grupo
-    GROUP BY gv.id_grupo, gv.nome_grupo
+    LEFT JOIN (
+        SELECT 
+            id_grupo, 
+            STRING_AGG(nome_voluntario, ', ' ORDER BY nome_voluntario) as lista_membros
+        FROM voluntarios
+        WHERE id_grupo IS NOT NULL
+        GROUP BY id_grupo
+    ) as membros ON gv.id_grupo = membros.id_grupo
     ORDER BY gv.nome_grupo;
     """
     return pd.read_sql(query, conn)
 
-def get_voluntarios_in_grupo(id_grupo):
-    """ Retorna uma lista de IDs de voluntários que pertencem a um grupo. """
+def get_voluntarios_sem_grupo():
     conn = ensure_connection()
-    if conn is None: return []
-    df = pd.read_sql(f"SELECT id_voluntario FROM voluntarios WHERE id_grupo = {id_grupo}", conn)
-    return df['id_voluntario'].tolist()
+    if conn is None: return pd.DataFrame()
+    return pd.read_sql("SELECT id_voluntario, nome_voluntario FROM voluntarios WHERE ativo = TRUE AND id_grupo IS NULL ORDER BY nome_voluntario", conn)
 
-def update_grupo_vinculado(id_grupo, novo_nome, novos_ids_voluntarios):
-    """ Atualiza o nome e os membros de um grupo. """
+def get_voluntarios_do_grupo(id_grupo):
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    return pd.read_sql(f"SELECT id_voluntario, nome_voluntario FROM voluntarios WHERE ativo = TRUE AND id_grupo = {id_grupo} ORDER BY nome_voluntario", conn)
+
+def create_grupo(nome_grupo, ids_membros):
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
-            # 1. Atualiza o nome do grupo
-            cur.execute("UPDATE grupos_vinculados SET nome_grupo = %s WHERE id_grupo = %s", (novo_nome, id_grupo))
-            
-            # 2. Remove o vínculo de todos os voluntários que pertenciam a este grupo (limpeza)
-            cur.execute("UPDATE voluntarios SET id_grupo = NULL WHERE id_grupo = %s", (id_grupo,))
-            
-            # 3. Adiciona o vínculo para a nova lista de voluntários
-            if novos_ids_voluntarios:
-                cur.execute(
-                    "UPDATE voluntarios SET id_grupo = %s WHERE id_voluntario IN %s",
-                    (id_grupo, tuple(novos_ids_voluntarios))
-                )
+            cur.execute("INSERT INTO grupos_vinculados (nome_grupo) VALUES (%s) RETURNING id_grupo", (nome_grupo,))
+            id_novo_grupo = cur.fetchone()[0]
+            cur.execute("UPDATE voluntarios SET id_grupo = %s WHERE id_voluntario IN %s", (id_novo_grupo, tuple(ids_membros)))
         conn.commit()
-        st.success(f"Grupo '{novo_nome}' atualizado com sucesso!")
     except Exception as e:
-        conn.rollback()
-        st.error(f"Erro ao atualizar grupo: {e}")
-        print(f"ERRO DETALHADO [update_grupo_vinculado]: {e}")
+        conn.rollback(); st.error(f"Erro ao criar grupo: {e}")
 
-def delete_grupo_vinculado(id_grupo):
-    """ Deleta um grupo (os voluntários ficam sem grupo). """
+def update_grupo(id_grupo, novo_nome, ids_membros_novos):
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
-            # O 'ON DELETE SET NULL' na tabela voluntarios já cuida de desvincular os voluntários.
-            # Aqui só precisamos deletar o grupo em si.
+            cur.execute("UPDATE grupos_vinculados SET nome_grupo = %s WHERE id_grupo = %s", (novo_nome, id_grupo))
+            cur.execute("UPDATE voluntarios SET id_grupo = NULL WHERE id_grupo = %s", (id_grupo,))
+            if ids_membros_novos:
+                cur.execute("UPDATE voluntarios SET id_grupo = %s WHERE id_voluntario IN %s", (id_grupo, tuple(ids_membros_novos)))
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao atualizar grupo: {e}")
+
+def delete_grupo(id_grupo):
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE voluntarios SET id_grupo = NULL WHERE id_grupo = %s", (id_grupo,))
             cur.execute("DELETE FROM grupos_vinculados WHERE id_grupo = %s", (id_grupo,))
         conn.commit()
-        st.success("Grupo deletado com sucesso!")
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao deletar grupo: {e}")
+
+# --- CRUD COTAS ---
+def get_cotas_all_servicos():
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    return pd.read_sql("SELECT * FROM servico_funcao_cotas", conn)
+
+def get_cotas_for_servico(id_servico):
+    conn = ensure_connection()
+    if conn is None: return {}
+    df = pd.read_sql(f"SELECT id_funcao, quantidade_necessaria FROM servico_funcao_cotas WHERE id_servico = {id_servico}", conn)
+    return df.set_index('id_funcao')['quantidade_necessaria'].to_dict()
+
+def update_cotas_servico(id_servico, cotas_dict):
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM servico_funcao_cotas WHERE id_servico = %s", (id_servico,))
+            args = [(id_servico, id_f, qtd) for id_f, qtd in cotas_dict.items() if qtd > 0]
+            if args:
+                cur.executemany("INSERT INTO servico_funcao_cotas (id_servico, id_funcao, quantidade_necessaria) VALUES (%s, %s, %s)", args)
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao atualizar cotas: {e}")
+
+# --- LÓGICA DE ESCALA ---
+def create_events_for_month(ano, mes):
+    conn = ensure_connection()
+    if conn is None: return False
+    servicos_fixos = view_all_servicos_fixos()
+    if servicos_fixos.empty:
+        st.warning("Nenhum serviço fixo cadastrado."); return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM eventos WHERE EXTRACT(YEAR FROM data_evento) = %s AND EXTRACT(MONTH FROM data_evento) = %s", (ano, mes))
+            _, num_dias = calendar.monthrange(ano, mes)
+            for dia in range(1, num_dias + 1):
+                data_atual = datetime(ano, mes, dia).date()
+                dia_da_semana_ajustado = (data_atual.weekday() + 1) % 7
+                for _, servico in servicos_fixos.iterrows():
+                    if servico['dia_da_semana'] == dia_da_semana_ajustado:
+                        cur.execute("INSERT INTO eventos (id_servico_fixo, data_evento) VALUES (%s, %s)", (int(servico['id_servico']), data_atual))
+            conn.commit()
+        st.success(f"Eventos para {mes}/{ano} criados!"); return True
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao criar eventos: {e}"); return False
+
+def get_events_for_month(ano, mes):
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    query = "SELECT e.id_evento, e.id_servico_fixo, e.data_evento, sf.nome_servico FROM eventos e JOIN servicos_fixos sf ON e.id_servico_fixo = sf.id_servico WHERE EXTRACT(YEAR FROM e.data_evento) = %s AND EXTRACT(MONTH FROM e.data_evento) = %s ORDER BY e.data_evento ASC"
+    return pd.read_sql(query, conn, params=(ano, mes))
+
+def get_escala_completa(ano, mes):
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    query = """
+    SELECT 
+        esc.funcao_instancia, e.id_evento, e.data_evento, sf.nome_servico,
+        f.id_funcao, f.nome_funcao, v.id_voluntario, v.nome_voluntario
+    FROM escala esc
+    LEFT JOIN eventos e ON esc.id_evento = e.id_evento
+    LEFT JOIN funcoes f ON esc.id_funcao = f.id_funcao
+    LEFT JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
+    LEFT JOIN servicos_fixos sf ON e.id_servico_fixo = sf.id_servico
+    WHERE v.nome_voluntario IS NOT NULL AND EXTRACT(YEAR FROM e.data_evento) = %s AND EXTRACT(MONTH FROM e.data_evento) = %s
+    ORDER BY e.data_evento, f.id_funcao, esc.funcao_instancia;
+    """
+    return pd.read_sql(query, conn, params=(ano, mes))
+
+def update_escala_entry(id_evento, id_funcao, id_voluntario, instancia):
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM escala WHERE id_evento = %s AND id_funcao = %s AND funcao_instancia = %s", (id_evento, id_funcao, instancia))
+            if id_voluntario is not None:
+                cur.execute("INSERT INTO escala (id_evento, id_funcao, id_voluntario, funcao_instancia) VALUES (%s, %s, %s, %s)", (id_evento, id_funcao, id_voluntario, instancia))
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao salvar alteração na escala: {e}")
+
+def apagar_escala_do_mes(ano, mes):
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM escala WHERE id_evento IN (SELECT id_evento FROM eventos WHERE EXTRACT(YEAR FROM data_evento) = %s AND EXTRACT(MONTH FROM data_evento) = %s)", (ano, mes))
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao limpar escala antiga: {e}")
+
+def gerar_escala_automatica(ano, mes):
+    """ ALGORITMO FINAL V10: Lógica de grupo 'Tudo ou Nada' robusta. """
+    apagar_escala_do_mes(ano, mes)
+
+    eventos = get_events_for_month(ano, mes)
+    if eventos.empty: return
+
+    voluntarios_df = get_all_voluntarios_com_detalhes()
+    cotas = get_cotas_all_servicos()
+    grupos_df = get_all_grupos_com_membros()
+    ids_grupos_validos = set(grupos_df['id_grupo'])
+    mes_ano_str = f"{ano}-{mes:02d}"
+    escala_final = []
+    contagem_escalas_mes = {int(vol_id): 0 for vol_id in voluntarios_df['id_voluntario']}
+    lista_voluntarios = voluntarios_df.to_dict('records')
+
+    for _, evento in eventos.iterrows():
+        id_evento = int(evento['id_evento'])
+        id_servico = int(evento['id_servico_fixo'])
+
+        vagas_do_dia = []
+        cotas_do_servico = cotas[cotas['id_servico'] == id_servico]
+        for _, cota in cotas_do_servico.iterrows():
+            for i in range(1, int(cota['quantidade_necessaria']) + 1):
+                vagas_do_dia.append({'id_funcao': int(cota['id_funcao']), 'instancia': i})
+
+        pool_candidatos_dia = []
+        for vol_dict in lista_voluntarios:
+            vol_id = int(vol_dict['id_voluntario'])
+            vol_disp = [int(d) for d in (vol_dict.get('disponibilidade') or []) if d is not None]
+            if (contagem_escalas_mes.get(vol_id, 0) < vol_dict.get('limite_escalas_mes', 99) and
+                id_servico in vol_disp and not check_indisponibilidade(vol_id, mes_ano_str)):
+                pool_candidatos_dia.append(vol_dict.copy())
+
+        grupos = {}
+        individuais = []
+        for vol in pool_candidatos_dia:
+            id_grupo = vol['id_grupo']
+            if pd.notna(id_grupo) and int(id_grupo) in ids_grupos_validos:
+                id_grupo_int = int(id_grupo)
+                if id_grupo_int not in grupos:
+                    grupos[id_grupo_int] = []
+                grupos[id_grupo_int].append(vol)
+            else:
+                individuais.append(vol)
+
+        random.shuffle(individuais)
+        ids_grupos_embaralhados = list(grupos.keys())
+        random.shuffle(ids_grupos_embaralhados)
+
+        escala_para_este_dia = []
+
+        for id_grupo in ids_grupos_embaralhados:
+            membros = grupos[id_grupo]
+            plano_de_escala_grupo = []
+            vagas_disponiveis_simulacao = [v for v in vagas_do_dia if v not in [p['vaga'] for p in plano_de_escala_grupo]]
+
+            pode_escalar_grupo = True
+            for membro in membros:
+                funcoes_membro = [int(f) for f in (membro.get('funcoes') or []) if f is not None]
+                vaga_encontrada = False
+                for vaga in vagas_disponiveis_simulacao:
+                    if vaga['id_funcao'] in funcoes_membro:
+                        plano_de_escala_grupo.append({'membro': membro, 'vaga': vaga})
+                        vagas_disponiveis_simulacao.remove(vaga)
+                        vaga_encontrada = True
+                        break
+                if not vaga_encontrada:
+                    pode_escalar_grupo = False
+                    break
+
+            if pode_escalar_grupo:
+                for item in plano_de_escala_grupo:
+                    m = item['membro']; v = item['vaga']
+                    escala_para_este_dia.append({'id_evento': id_evento, 'id_funcao': v['id_funcao'], 'id_voluntario': m['id_voluntario'], 'instancia': v['instancia']})
+                    vagas_do_dia.remove(v)
+                ids_membros_grupo = {m['id_voluntario'] for m in membros}
+                individuais = [i for i in individuais if i['id_voluntario'] not in ids_membros_grupo]
+
+        for vaga in vagas_do_dia:
+            for candidato in individuais:
+                funcoes_candidato = [int(f) for f in (candidato.get('funcoes') or []) if f is not None]
+                if vaga['id_funcao'] in funcoes_candidato:
+                    escala_para_este_dia.append({'id_evento': id_evento, 'id_funcao': vaga['id_funcao'], 'id_voluntario': candidato['id_voluntario'], 'instancia': vaga['instancia']})
+                    individuais.remove(candidato)
+                    break
+
+        for item in escala_para_este_dia:
+            contagem_escalas_mes[item['id_voluntario']] += 1
+        escala_final.extend(escala_para_este_dia)
+
+    if escala_final:
+        conn = ensure_connection()
+        try:
+            with conn.cursor() as cur:
+                args = [(e['id_evento'], e['id_funcao'], e['id_voluntario'], e['instancia']) for e in escala_final]
+                cur.executemany("INSERT INTO escala (id_evento, id_funcao, id_voluntario, funcao_instancia) VALUES (%s, %s, %s, %s)", args)
+            conn.commit()
+            st.success("Escala preenchida!")
+        except Exception as e:
+            conn.rollback(); st.error(f"Erro ao salvar escala: {e}")
+
+
+def update_apenas_disponibilidade(id_voluntario, lista_ids_servicos):
+    """ Atualiza apenas a disponibilidade de um voluntário. """
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM voluntario_disponibilidade WHERE id_voluntario = %s", (id_voluntario,))
+            if lista_ids_servicos:
+                args = [(id_voluntario, id_servico) for id_servico in lista_ids_servicos]
+                cur.executemany("INSERT INTO voluntario_disponibilidade (id_voluntario, id_servico) VALUES (%s, %s)", args)
+        conn.commit()
     except Exception as e:
         conn.rollback()
-        st.error(f"Erro ao deletar grupo: {e}")
-        print(f"ERRO DETALHADO [delete_grupo_vinculado]: {e}")
+        st.error(f"Erro ao atualizar disponibilidade: {e}")
+
+# Substitua a antiga 'update_escala_entry' por esta nova versão
+def update_escala_entry(id_evento, id_funcao, id_voluntario, instancia):
+    """
+    Atualiza ou insere uma única entrada na escala, usando a 'instancia' da função.
+    Se id_voluntario for None, a vaga é limpa (deletada).
+    """
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            # Primeiro, deleta a entrada antiga para esta vaga específica (evento + função + instância)
+            cur.execute(
+                "DELETE FROM escala WHERE id_evento = %s AND id_funcao = %s AND funcao_instancia = %s",
+                (id_evento, id_funcao, instancia)
+            )
+            # Se um novo voluntário foi selecionado (não é "Vago"), insere a nova entrada
+            if id_voluntario is not None:
+                cur.execute(
+                    "INSERT INTO escala (id_evento, id_funcao, id_voluntario, funcao_instancia) VALUES (%s, %s, %s, %s)",
+                    (id_evento, id_funcao, id_voluntario, instancia)
+                )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Erro ao salvar alteração na escala: {e}")
+        print(f"ERRO DETALHADO [update_escala_entry]: {e}")
+
+def get_voluntarios_for_funcao(id_funcao):
+    """ Retorna um DataFrame de voluntários que podem exercer uma função específica. """
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    
+    query = """
+    SELECT v.id_voluntario, v.nome_voluntario
+    FROM voluntarios v
+    JOIN voluntario_funcoes vf ON v.id_voluntario = vf.id_voluntario
+    WHERE v.ativo = TRUE AND vf.id_funcao = %s
+    ORDER BY v.nome_voluntario;
+    """
+    # CORREÇÃO: Converte o id_funcao para um int padrão do Python antes de passar para a query
+    return pd.read_sql(query, conn, params=(int(id_funcao),))
+
+def get_voluntario_by_name(nome_voluntario):
+    """ Busca um voluntário pelo nome para encontrar seu ID. """
+    conn = ensure_connection()
+    if conn is None or not nome_voluntario: return None
+    query = "SELECT id_voluntario FROM voluntarios WHERE nome_voluntario = %s"
+    df = pd.read_sql(query, conn, params=(nome_voluntario,))
+    return int(df['id_voluntario'].iloc[0]) if not df.empty else None
+
+def get_all_voluntarios_com_detalhes():
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+    query = """
+    SELECT 
+        v.id_voluntario, v.nome_voluntario, v.limite_escalas_mes, v.id_grupo,
+        ARRAY_AGG(DISTINCT vf.id_funcao) as funcoes,
+        ARRAY_AGG(DISTINCT vd.id_servico) as disponibilidade
+    FROM voluntarios v
+    LEFT JOIN voluntario_funcoes vf ON v.id_voluntario = vf.id_voluntario
+    LEFT JOIN voluntario_disponibilidade vd ON v.id_voluntario = vd.id_voluntario
+    WHERE v.ativo = TRUE
+    GROUP BY v.id_voluntario
+    ORDER BY v.nome_voluntario;
+    """
+    return pd.read_sql(query, conn)
