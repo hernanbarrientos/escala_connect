@@ -7,6 +7,10 @@ from database import (
     view_all_servicos_fixos, get_disponibilidade_of_voluntario, update_disponibilidade_of_voluntario,
     check_indisponibilidade, set_indisponibilidade
 )
+import style
+
+
+style.apply_style()
 
 
 st.set_page_config(page_title="Gerenciar Voluntários", layout="wide")

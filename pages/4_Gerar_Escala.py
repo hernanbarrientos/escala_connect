@@ -3,7 +3,11 @@ import pandas as pd
 from datetime import datetime
 import calendar
 from database import * # Importa tudo para simplificar
+import style
 from pdf_generator import gerar_pdf_escala
+
+# Aplica o estilo e a sidebar
+style.apply_style()
 
 st.set_page_config(page_title="Gerar Escala", layout="wide")
 st.title("🗓️ Gerador e Editor de Escalas Mensais")
@@ -17,22 +21,45 @@ except:
     meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 
                 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
 
-col1, col2, col3, col4 = st.columns([2,2,3,3])
+# --- Fileira 1: Seletores de Data ---
+col1, col2, col_vazia = st.columns([1, 1, 4.1]) # 1 parte para o Mês, 4 partes de espaço vazio
 with col1:
-    mes_selecionado_num = st.selectbox("Mês", options=list(meses_pt.keys()), format_func=lambda m: meses_pt[m], index=hoje.month - 1)
+    mes_selecionado_num = st.selectbox(
+        "Mês", 
+        options=list(meses_pt.keys()), 
+        format_func=lambda m: meses_pt[m], 
+        index=hoje.month - 1
+    )
 with col2:
-    ano_selecionado = st.number_input("Ano", min_value=hoje.year, max_value=hoje.year + 5, value=hoje.year)
+    ano_selecionado = st.number_input(
+        "Ano", 
+        min_value=hoje.year, 
+        max_value=hoje.year + 5, 
+        value=hoje.year
+    )
 
+# --- Fileira 2: Botões de Ação ---
+col3, col4, col5 = st.columns(3)
 with col3:
-    st.write("")
-    if st.button("Criar Eventos do Mês"):
+    if st.button("Criar Eventos do Mês", use_container_width=True):
         create_events_for_month(ano_selecionado, mes_selecionado_num)
         st.rerun()
 with col4:
-    st.write("")
-    if st.button("Preencher Automaticamente", type="primary"):
+    if st.button("Preencher Automaticamente", type="primary", use_container_width=True):
         gerar_escala_automatica(ano_selecionado, mes_selecionado_num)
         st.rerun()
+with col5:
+    escala_completa_df_pdf = get_escala_completa(ano_selecionado, mes_selecionado_num)
+    if not escala_completa_df_pdf.empty:
+        mes_ano_formatado = f"{meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}"
+        pdf_bytes = gerar_pdf_escala(escala_completa_df_pdf, mes_ano_formatado)
+        st.download_button(
+            label="📄 Baixar Escala em PDF",
+            data=pdf_bytes,
+            file_name=f"escala_connect_{ano_selecionado}_{mes_selecionado_num:02d}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
 
 st.divider()
 st.header(f"Escala Editável de {meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}")
@@ -142,28 +169,28 @@ else:
             st.error(f"Ocorreu um erro ao salvar: {e}")
 
 st.divider()
-st.header("📄 Exportar Escala")
+# st.header("📄 Exportar Escala")
 
-escala_completa_df = get_escala_completa(ano_selecionado, mes_selecionado_num)
+# escala_completa_df = get_escala_completa(ano_selecionado, mes_selecionado_num)
 
-if not escala_completa_df.empty:
-    # O botão para GERAR o PDF fica dentro do form
-    with st.form("form_pdf"):
-        submitted = st.form_submit_button("Gerar PDF para Impressão", use_container_width=True, type="primary")
-        if submitted:
-            with st.spinner("Criando PDF..."):
-                mes_ano_formatado = f"{meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}"
-                # Guarda os bytes do PDF no session_state
-                st.session_state.pdf_bytes = gerar_pdf_escala(escala_completa_df, mes_ano_formatado)
+# if not escala_completa_df.empty:
+#     # O botão para GERAR o PDF fica dentro do form
+#     with st.form("form_pdf"):
+#         submitted = st.form_submit_button("Gerar PDF para Impressão", use_container_width=True, type="primary")
+#         if submitted:
+#             with st.spinner("Criando PDF..."):
+#                 mes_ano_formatado = f"{meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}"
+#                 # Guarda os bytes do PDF no session_state
+#                 st.session_state.pdf_bytes = gerar_pdf_escala(escala_completa_df, mes_ano_formatado)
     
-    # O botão para BAIXAR o PDF fica FORA do form
-    if 'pdf_bytes' in st.session_state and st.session_state.pdf_bytes:
-        st.download_button(
-            label="✅ PDF Pronto! Clique aqui para baixar.",
-            data=st.session_state.pdf_bytes,
-            file_name=f"escala_connect_{ano_selecionado}_{mes_selecionado_num:02d}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-else:
-    st.info("Gere e/ou preencha uma escala primeiro para poder exportar.")
+#     # O botão para BAIXAR o PDF fica FORA do form
+#     if 'pdf_bytes' in st.session_state and st.session_state.pdf_bytes:
+#         st.download_button(
+#             label="✅ PDF Pronto! Clique aqui para baixar.",
+#             data=st.session_state.pdf_bytes,
+#             file_name=f"escala_connect_{ano_selecionado}_{mes_selecionado_num:02d}.pdf",
+#             mime="application/pdf",
+#             use_container_width=True
+#         )
+# else:
+#     st.info("Gere e/ou preencha uma escala primeiro para poder exportar.")

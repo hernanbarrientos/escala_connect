@@ -6,6 +6,10 @@ from database import (
     create_grupo, get_voluntarios_do_grupo, update_grupo, delete_grupo,
     view_all_servicos_fixos, update_apenas_disponibilidade # Novas importações
 )
+import style
+
+
+style.apply_style()
 
 st.set_page_config(page_title="Gerenciar Vínculos", layout="wide")
 st.title("🔗 Gerenciar Vínculos (Grupos)")

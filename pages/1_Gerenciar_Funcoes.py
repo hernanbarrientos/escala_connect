@@ -1,6 +1,10 @@
 import streamlit as st
 # Importa as novas funções que criamos
 from database import add_funcao, view_all_funcoes, update_funcao, delete_funcao
+import style
+
+
+style.apply_style()
 
 def main():
     st.set_page_config(page_title="Gestão de Voluntários", layout="wide")

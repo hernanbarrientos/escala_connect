@@ -3,6 +3,10 @@ from database import (
     add_servico_fixo, view_all_servicos_fixos, update_servico_fixo, delete_servico_fixo,
     view_all_funcoes, get_cotas_for_servico, update_cotas_servico
 )
+import style
+
+
+style.apply_style()
 
 st.set_page_config(page_title="Gerenciar Serviços", layout="wide")
 st.title("Gerenciar Serviços Fixos e Cotas de Funções")

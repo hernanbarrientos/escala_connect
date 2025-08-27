@@ -1,4 +1,8 @@
 import streamlit as st
+import style
+
+
+style.apply_style()
 
 st.set_page_config(
     page_title="Home - Escala CONNECT",
