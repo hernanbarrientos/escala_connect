@@ -46,7 +46,12 @@ with col3:
         st.rerun()
 with col4:
     if st.button("Preencher Automaticamente", type="primary", use_container_width=True):
-        gerar_escala_automatica(ano_selecionado, mes_selecionado_num)
+        # Adiciona o st.spinner aqui
+        with st.spinner('Montando a escala, por favor aguarde...'):
+            # A função que pode demorar fica DENTRO do spinner
+            gerar_escala_automatica(ano_selecionado, mes_selecionado_num)
+        
+        # O rerun acontece depois que o spinner some
         st.rerun()
 with col5:
     escala_completa_df_pdf = get_escala_completa(ano_selecionado, mes_selecionado_num)
