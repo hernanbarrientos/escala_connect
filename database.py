@@ -2,7 +2,7 @@
 import streamlit as st
 import psycopg2
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 import calendar
 import random
 
@@ -207,24 +207,46 @@ def update_apenas_disponibilidade(id_voluntario, lista_ids_servicos):
         conn.rollback(); st.error(f"Erro ao atualizar disponibilidade: {e}")
 
 # --- CRUD VOLUNTARIO_INDISPONIBILIDADE ---
-def check_indisponibilidade(id_voluntario, mes_ano):
+def get_indisponibilidade_eventos(id_voluntario, ano, mes):
+    """ Busca os IDs dos eventos específicos de indisponibilidade para um voluntário. """
     conn = ensure_connection()
-    if conn is None: return False
-    df = pd.read_sql("SELECT 1 FROM voluntario_indisponibilidade WHERE id_voluntario = %s AND mes_ano = %s", conn, params=(id_voluntario, mes_ano))
-    return not df.empty
+    if conn is None: return []
+    query = """
+    SELECT vi.id_evento
+    FROM voluntario_indisponibilidade_eventos vi
+    JOIN eventos e ON vi.id_evento = e.id_evento
+    WHERE vi.id_voluntario = %s
+      AND EXTRACT(YEAR FROM e.data_evento) = %s
+      AND EXTRACT(MONTH FROM e.data_evento) = %s
+    """
+    df = pd.read_sql(query, conn, params=(id_voluntario, ano, mes))
+    return df['id_evento'].tolist()
 
-def set_indisponibilidade(id_voluntario, mes_ano, indisponivel):
+def update_indisponibilidade_eventos(id_voluntario, ano, mes, lista_ids_eventos):
+    """ Atualiza os eventos de indisponibilidade, limpando os antigos do mês e inserindo os novos. """
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
-            if indisponivel:
-                cur.execute("INSERT INTO voluntario_indisponibilidade (id_voluntario, mes_ano) VALUES (%s, %s) ON CONFLICT DO NOTHING", (id_voluntario, mes_ano))
-            else:
-                cur.execute("DELETE FROM voluntario_indisponibilidade WHERE id_voluntario = %s AND mes_ano = %s", (id_voluntario, mes_ano))
+            # Deleta as indisponibilidades antigas do mês/ano usando um JOIN com a tabela de eventos
+            cur.execute("""
+                DELETE FROM voluntario_indisponibilidade_eventos
+                WHERE id_voluntario = %s AND id_evento IN (
+                    SELECT id_evento FROM eventos
+                    WHERE EXTRACT(YEAR FROM data_evento) = %s AND EXTRACT(MONTH FROM data_evento) = %s
+                )
+            """, (id_voluntario, ano, mes))
+
+            if lista_ids_eventos:
+                args = [(id_voluntario, id_evento) for id_evento in lista_ids_eventos]
+                cur.executemany("""
+                    INSERT INTO voluntario_indisponibilidade_eventos (id_voluntario, id_evento)
+                    VALUES (%s, %s)
+                """, args)
         conn.commit()
     except Exception as e:
-        conn.rollback(); st.error(f"Erro ao definir indisponibilidade: {e}")
+        conn.rollback()
+        st.error(f"Erro ao atualizar indisponibilidades: {e}")
 
 # --- CRUD GRUPOS ---
 def get_all_grupos_com_membros(_cache_buster=None):
@@ -376,6 +398,30 @@ def update_escala_entry(id_evento, id_funcao, id_voluntario, instancia):
     except Exception as e:
         conn.rollback(); st.error(f"Erro ao salvar alteração na escala: {e}")
 
+def get_indisponibilidade_datas(id_voluntario, ano, mes):
+    """ Busca as datas específicas em que um voluntário está indisponível em um mês. """
+    conn = ensure_connection()
+    if conn is None: return []
+    query = "SELECT data_indisponivel FROM voluntario_indisponibilidade_datas WHERE id_voluntario = %s AND EXTRACT(YEAR FROM data_indisponivel) = %s AND EXTRACT(MONTH FROM data_indisponivel) = %s"
+    df = pd.read_sql(query, conn, params=(id_voluntario, ano, mes))
+    return [d.date() for d in pd.to_datetime(df['data_indisponivel'])]
+
+def update_indisponibilidade_datas(id_voluntario, ano, mes, datas_indisponiveis):
+    """ Atualiza a lista de datas de indisponibilidade para um voluntário em um mês. """
+    conn = ensure_connection()
+    if conn is None: return
+    try:
+        with conn.cursor() as cur:
+            # 1. Limpa as indisponibilidades antigas apenas para o mês em questão
+            cur.execute("DELETE FROM voluntario_indisponibilidade_datas WHERE id_voluntario = %s AND EXTRACT(YEAR FROM data_indisponivel) = %s AND EXTRACT(MONTH FROM data_indisponivel) = %s", (id_voluntario, ano, mes))
+            # 2. Insere as novas datas
+            if datas_indisponiveis:
+                args = [(id_voluntario, data) for data in datas_indisponiveis]
+                cur.executemany("INSERT INTO voluntario_indisponibilidade_data (id_voluntario, data_indisponivel) VALUES (%s, %s)", args)
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); st.error(f"Erro ao atualizar indisponibilidade: {e}")
+
 def apagar_escala_do_mes(ano, mes):
     conn = ensure_connection()
     if conn is None: return
@@ -387,7 +433,7 @@ def apagar_escala_do_mes(ano, mes):
         conn.rollback(); st.error(f"Erro ao limpar escala antiga: {e}")
 
 def gerar_escala_automatica(ano, mes):
-    """ ALGORITMO FINAL V10: Lógica de grupo 'Tudo ou Nada' robusta. """
+    """ ALGORITMO FINAL V13: Usa indisponibilidade por evento específico. """
     apagar_escala_do_mes(ano, mes)
 
     eventos = get_events_for_month(ano, mes)
@@ -397,10 +443,19 @@ def gerar_escala_automatica(ano, mes):
     cotas = get_cotas_all_servicos()
     grupos_df = get_all_grupos_com_membros()
     ids_grupos_validos = set(grupos_df['id_grupo'])
-    mes_ano_str = f"{ano}-{mes:02d}"
     escala_final = []
     contagem_escalas_mes = {int(vol_id): 0 for vol_id in voluntarios_df['id_voluntario']}
     lista_voluntarios = voluntarios_df.to_dict('records')
+
+    conn = ensure_connection()
+    query_indisp = """
+        SELECT vi.id_voluntario, vi.id_evento
+        FROM voluntario_indisponibilidade_eventos vi
+        JOIN eventos e ON vi.id_evento = e.id_evento
+        WHERE EXTRACT(YEAR FROM e.data_evento) = %s AND EXTRACT(MONTH FROM e.data_evento) = %s
+    """
+    indisponibilidades_df = pd.read_sql(query_indisp, conn, params=(ano, mes))
+    indisponibilidades_por_voluntario = indisponibilidades_df.groupby('id_voluntario')['id_evento'].apply(list).to_dict()
 
     for _, evento in eventos.iterrows():
         id_evento = int(evento['id_evento'])
@@ -416,8 +471,12 @@ def gerar_escala_automatica(ano, mes):
         for vol_dict in lista_voluntarios:
             vol_id = int(vol_dict['id_voluntario'])
             vol_disp = [int(d) for d in (vol_dict.get('disponibilidade') or []) if d is not None]
+
+            # MUDANÇA AQUI: Pega a lista de IDs de evento
+            ids_eventos_indisp_vol = indisponibilidades_por_voluntario.get(vol_id, [])
             if (contagem_escalas_mes.get(vol_id, 0) < vol_dict.get('limite_escalas_mes', 99) and
-                id_servico in vol_disp and not check_indisponibilidade(vol_id, mes_ano_str)):
+                id_servico in vol_disp and
+                id_evento not in ids_eventos_indisp_vol): # A nova verificação!
                 pool_candidatos_dia.append(vol_dict.copy())
 
         grupos = {}
@@ -437,46 +496,60 @@ def gerar_escala_automatica(ano, mes):
         random.shuffle(ids_grupos_embaralhados)
 
         escala_para_este_dia = []
-
+        
+        # --- 1. Tentar alocar GRUPOS PRIMEIRO (Lógica 'Tudo ou Nada') ---
         for id_grupo in ids_grupos_embaralhados:
             membros = grupos[id_grupo]
-            plano_de_escala_grupo = []
-            vagas_disponiveis_simulacao = [v for v in vagas_do_dia if v not in [p['vaga'] for p in plano_de_escala_grupo]]
-
+            vagas_temp = list(vagas_do_dia) # Cópia para simulação
+            plano_grupo = []
+            
             pode_escalar_grupo = True
             for membro in membros:
                 funcoes_membro = [int(f) for f in (membro.get('funcoes') or []) if f is not None]
                 vaga_encontrada = False
-                for vaga in vagas_disponiveis_simulacao:
+                for vaga in vagas_temp:
                     if vaga['id_funcao'] in funcoes_membro:
-                        plano_de_escala_grupo.append({'membro': membro, 'vaga': vaga})
-                        vagas_disponiveis_simulacao.remove(vaga)
+                        plano_grupo.append({'membro': membro, 'vaga': vaga})
+                        vagas_temp.remove(vaga)
                         vaga_encontrada = True
                         break
                 if not vaga_encontrada:
                     pode_escalar_grupo = False
                     break
-
+            
             if pode_escalar_grupo:
-                for item in plano_de_escala_grupo:
-                    m = item['membro']; v = item['vaga']
-                    escala_para_este_dia.append({'id_evento': id_evento, 'id_funcao': v['id_funcao'], 'id_voluntario': m['id_voluntario'], 'instancia': v['instancia']})
-                    vagas_do_dia.remove(v)
+                # Se a simulação deu certo, efetiva a escala
+                for item in plano_grupo:
+                    m = item['membro']
+                    v = item['vaga']
+                    escala_para_este_dia.append({
+                        'id_evento': id_evento, 'id_funcao': v['id_funcao'], 
+                        'id_voluntario': m['id_voluntario'], 'instancia': v['instancia']
+                    })
+                    vagas_do_dia.remove(v) # Remove a vaga da lista principal
+                
+                # Remove os membros do grupo da lista de individuais
                 ids_membros_grupo = {m['id_voluntario'] for m in membros}
                 individuais = [i for i in individuais if i['id_voluntario'] not in ids_membros_grupo]
 
+        # --- 2. Preencher as vagas restantes com INDIVIDUAIS ---
         for vaga in vagas_do_dia:
             for candidato in individuais:
                 funcoes_candidato = [int(f) for f in (candidato.get('funcoes') or []) if f is not None]
                 if vaga['id_funcao'] in funcoes_candidato:
-                    escala_para_este_dia.append({'id_evento': id_evento, 'id_funcao': vaga['id_funcao'], 'id_voluntario': candidato['id_voluntario'], 'instancia': vaga['instancia']})
-                    individuais.remove(candidato)
+                    escala_para_este_dia.append({
+                        'id_evento': id_evento, 'id_funcao': vaga['id_funcao'], 
+                        'id_voluntario': candidato['id_voluntario'], 'instancia': vaga['instancia']
+                    })
+                    individuais.remove(candidato) # Remove para não escalar de novo no mesmo dia
                     break
 
+        # Adiciona a escala do dia à escala final do mês
         for item in escala_para_este_dia:
             contagem_escalas_mes[item['id_voluntario']] += 1
         escala_final.extend(escala_para_este_dia)
 
+    # --- Salva a escala completa no banco de dados ---
     if escala_final:
         conn = ensure_connection()
         try:
@@ -487,7 +560,6 @@ def gerar_escala_automatica(ano, mes):
             st.success("Escala preenchida!")
         except Exception as e:
             conn.rollback(); st.error(f"Erro ao salvar escala: {e}")
-
 
 def update_apenas_disponibilidade(id_voluntario, lista_ids_servicos):
     """ Atualiza apenas a disponibilidade de um voluntário. """

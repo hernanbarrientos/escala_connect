@@ -94,7 +94,7 @@ else:
         ordem_colunas = sorted(escala_df['Dia'].unique(), key=lambda d: datetime.strptime(d.split(' - ')[0], '%d/%m'))
         tabela_para_exibir = tabela_para_exibir[ordem_colunas]
         
-        ordem_prioridade = ["Líder de Escala", "Link", "Portão", "Store", "Igreja"]
+        ordem_prioridade = ["Líder", "Link", "Portão", "Store", "Igreja"]
         todas_vagas_ordenadas = []
         funcoes_unicas = escala_df[['nome_funcao']].drop_duplicates()
         
@@ -169,28 +169,3 @@ else:
             st.error(f"Ocorreu um erro ao salvar: {e}")
 
 st.divider()
-# st.header("📄 Exportar Escala")
-
-# escala_completa_df = get_escala_completa(ano_selecionado, mes_selecionado_num)
-
-# if not escala_completa_df.empty:
-#     # O botão para GERAR o PDF fica dentro do form
-#     with st.form("form_pdf"):
-#         submitted = st.form_submit_button("Gerar PDF para Impressão", use_container_width=True, type="primary")
-#         if submitted:
-#             with st.spinner("Criando PDF..."):
-#                 mes_ano_formatado = f"{meses_pt.get(mes_selecionado_num, '')} de {ano_selecionado}"
-#                 # Guarda os bytes do PDF no session_state
-#                 st.session_state.pdf_bytes = gerar_pdf_escala(escala_completa_df, mes_ano_formatado)
-    
-#     # O botão para BAIXAR o PDF fica FORA do form
-#     if 'pdf_bytes' in st.session_state and st.session_state.pdf_bytes:
-#         st.download_button(
-#             label="✅ PDF Pronto! Clique aqui para baixar.",
-#             data=st.session_state.pdf_bytes,
-#             file_name=f"escala_connect_{ano_selecionado}_{mes_selecionado_num:02d}.pdf",
-#             mime="application/pdf",
-#             use_container_width=True
-#         )
-# else:
-#     st.info("Gere e/ou preencha uma escala primeiro para poder exportar.")
