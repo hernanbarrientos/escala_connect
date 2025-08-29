@@ -66,14 +66,16 @@ def delete_funcao(id_funcao):
         conn.rollback(); st.error(f"Erro ao deletar função: {e}")
 
 # --- CRUD VOLUNTÁRIOS ---
-def add_voluntario(nome, telefone, limite_mes, nivel_experiencia):
+
+# Versão NOVA e CORRIGIDA (sem 'telefone')
+def add_voluntario(nome, limite_mes, nivel_experiencia):
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO voluntarios (nome_voluntario, telefone, limite_escalas_mes, nivel_experiencia) VALUES (%s, %s, %s, %s)", 
-                (nome, telefone, limite_mes, nivel_experiencia)
+                "INSERT INTO voluntarios (nome_voluntario, limite_escalas_mes, nivel_experiencia) VALUES (%s, %s, %s)", 
+                (nome, limite_mes, nivel_experiencia)
             )
         conn.commit()
     except Exception as e:
@@ -102,15 +104,15 @@ def get_voluntario_by_name(nome_voluntario):
     df = pd.read_sql(query, conn, params=(nome_voluntario,))
     return int(df['id_voluntario'].iloc[0]) if not df.empty else None
 
-# Altere a assinatura e o comando UPDATE
-def update_voluntario(id_voluntario, nome, telefone, limite_mes, ativo, nivel_experiencia):
+# Versão NOVA e CORRIGIDA (sem 'telefone')
+def update_voluntario(id_voluntario, nome, limite_mes, ativo, nivel_experiencia):
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE voluntarios SET nome_voluntario = %s, telefone = %s, limite_escalas_mes = %s, ativo = %s, nivel_experiencia = %s WHERE id_voluntario = %s",
-                (nome, telefone, limite_mes, ativo, nivel_experiencia, id_voluntario)
+                "UPDATE voluntarios SET nome_voluntario = %s, limite_escalas_mes = %s, ativo = %s, nivel_experiencia = %s WHERE id_voluntario = %s",
+                (nome, limite_mes, ativo, nivel_experiencia, id_voluntario)
             )
         conn.commit()
     except Exception as e:
