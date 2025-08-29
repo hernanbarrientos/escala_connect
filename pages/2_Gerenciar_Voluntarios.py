@@ -29,17 +29,17 @@ with tab_cadastrar:
 
     with st.form(key="form_novo_voluntario", clear_on_submit=True):
         st.subheader("Dados Pessoais")
-        coluna_nome, coluna_telefone, coluna_limite = st.columns(3)
+        coluna_nome, coluna_limite, coluna_experiencia = st.columns(3)
         with coluna_nome:
             # ADICIONADO 'key'
             novo_nome = st.text_input("Nome Completo*", key="novo_nome")
-        with coluna_telefone:
-            # ADICIONADO 'key'
-            novo_telefone = st.text_input("Telefone", key="novo_telefone")
+        # with coluna_telefone:
+        #     # ADICIONADO 'key'
+        #     novo_telefone = st.text_input("Telefone", key="novo_telefone")
         with coluna_limite:
             # ADICIONADO 'key' - ESTE ERA O CAMPO DO ERRO
             novo_limite_mensal = st.number_input("Limite de escalas por mês*", min_value=1, max_value=10, value=2, key="novo_limite")
-            
+        with coluna_experiencia:   
             opcoes_nivel_novo = ["Iniciante", "Intermediário", "Avançado"]
             nivel_experiencia_novo = st.selectbox(
                 "Nível de Experiência*",
@@ -72,7 +72,7 @@ with tab_cadastrar:
             if not novo_nome:
                 st.warning("O campo 'Nome Completo' é obrigatório.")
             else:
-                add_voluntario(novo_nome, novo_telefone, int(novo_limite_mensal), nivel_experiencia_novo)
+                add_voluntario(novo_nome, int(novo_limite_mensal), nivel_experiencia_novo)
                 voluntarios_recentes = view_all_voluntarios(include_inactive=True)
                 id_novo_voluntario = int(voluntarios_recentes[voluntarios_recentes['nome_voluntario'] == novo_nome]['id_voluntario'].iloc[0])
                 
@@ -111,17 +111,17 @@ with tab_editar:
             st.header(f"Editando: {dados_voluntario['nome_voluntario']}")
             
             st.subheader("Dados Pessoais")
-            coluna_nome_edicao, coluna_telefone_edicao, coluna_limite_edicao = st.columns(3)
+            coluna_nome_edicao, coluna_limite_edicao, coluna_experiencia_edicao = st.columns(3)
             with coluna_nome_edicao:
                 # ADICIONADO 'key'
                 nome_editado = st.text_input("Nome Completo*", value=dados_voluntario['nome_voluntario'], key=f"edicao_nome_{id_voluntario_atual}")
-            with coluna_telefone_edicao:
-                # ADICIONADO 'key'
-                telefone_editado = st.text_input("Telefone", value=dados_voluntario['telefone'], key=f"edicao_tel_{id_voluntario_atual}")
+            # with coluna_telefone_edicao:
+            #     # ADICIONADO 'key'
+            #     telefone_editado = st.text_input("Telefone", value=dados_voluntario['telefone'], key=f"edicao_tel_{id_voluntario_atual}")
             with coluna_limite_edicao:
                 # ADICIONADO 'key'
                 limite_mensal_editado = st.number_input("Limite de escalas por mês*", min_value=1, max_value=10, value=int(dados_voluntario['limite_escalas_mes']), key=f"edicao_limite_{id_voluntario_atual}")
-                
+            with coluna_experiencia_edicao:    
                 opcoes_nivel = ["Iniciante", "Intermediário", "Avançado"]
                 # CORREÇÃO: Usa .get() para evitar o KeyError, com um valor padrão seguro.
                 nivel_atual = dados_voluntario.get('nivel_experiencia', 'Iniciante')
@@ -161,7 +161,7 @@ with tab_editar:
 
             if st.form_submit_button("Salvar Alterações"):
                 id_voluntario_inteiro = int(id_voluntario_atual)
-                update_voluntario(id_voluntario_inteiro, nome_editado, telefone_editado, int(limite_mensal_editado), status_ativo_editado, nivel_experiencia_editado)
+                update_voluntario(id_voluntario_inteiro, nome_editado, int(limite_mensal_editado), status_ativo_editado, nivel_experiencia_editado)
                 update_funcoes_of_voluntario(id_voluntario_inteiro, funcoes_selecionadas_edicao)
                 update_disponibilidade_of_voluntario(id_voluntario_inteiro, servicos_selecionados_edicao)
                 st.success(f"Dados de {nome_editado} atualizados com sucesso!")
