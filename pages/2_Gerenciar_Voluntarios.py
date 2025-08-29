@@ -3,32 +3,16 @@ import pandas as pd
 from datetime import datetime, date
 import calendar
 import locale
-from database import (
-    view_all_funcoes,
-    view_all_servicos_fixos,
-    add_voluntario,
-    view_all_voluntarios,
-    update_funcoes_of_voluntario,
-    update_disponibilidade_of_voluntario,
-    get_voluntario_by_id,
-    get_funcoes_of_voluntario,
-    get_disponibilidade_of_voluntario,
-    get_events_for_month,
-    get_indisponibilidade_eventos,
-    update_voluntario,
-    update_indisponibilidade_eventos
-)
+from database import *
 import style
 
 # Aplica o estilo global e a configuração da página
 style.apply_style()
 st.set_page_config(page_title="Gerenciar Voluntários", layout="wide")
 
-# Tenta configurar o idioma da aplicação para Português do Brasil
 try:
     locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 except locale.Error:
-    # Se o locale não estiver instalado, o app continua, mas pode mostrar nomes em inglês.
     pass
 
 st.title("Cadastro e Gestão de Voluntários")
@@ -40,7 +24,6 @@ tab_cadastrar, tab_editar = st.tabs(["Cadastrar Novo Voluntário", "Editar Volun
 with tab_cadastrar:
     st.header("Formulário de Cadastro")
 
-    # Busca as opções de funções e serviços do banco de dados
     todas_as_funcoes_cadastro = view_all_funcoes()
     todos_os_servicos_cadastro = view_all_servicos_fixos()
 
@@ -48,11 +31,21 @@ with tab_cadastrar:
         st.subheader("Dados Pessoais")
         coluna_nome, coluna_telefone, coluna_limite = st.columns(3)
         with coluna_nome:
-            novo_nome = st.text_input("Nome Completo*")
+            # ADICIONADO 'key'
+            novo_nome = st.text_input("Nome Completo*", key="novo_nome")
         with coluna_telefone:
-            novo_telefone = st.text_input("Telefone")
+            # ADICIONADO 'key'
+            novo_telefone = st.text_input("Telefone", key="novo_telefone")
         with coluna_limite:
-            novo_limite_mensal = st.number_input("Limite de escalas por mês*", min_value=1, max_value=10, value=2)
+            # ADICIONADO 'key' - ESTE ERA O CAMPO DO ERRO
+            novo_limite_mensal = st.number_input("Limite de escalas por mês*", min_value=1, max_value=10, value=2, key="novo_limite")
+            
+            opcoes_nivel_novo = ["Iniciante", "Intermediário", "Avançado"]
+            nivel_experiencia_novo = st.selectbox(
+                "Nível de Experiência*",
+                opcoes_nivel_novo,
+                key="novo_nivel"
+            )
 
         st.divider()
 
@@ -79,8 +72,7 @@ with tab_cadastrar:
             if not novo_nome:
                 st.warning("O campo 'Nome Completo' é obrigatório.")
             else:
-                add_voluntario(novo_nome, novo_telefone, int(novo_limite_mensal))
-                # Busca o ID do voluntário recém-criado para associar as funções e disponibilidades
+                add_voluntario(novo_nome, novo_telefone, int(novo_limite_mensal), nivel_experiencia_novo)
                 voluntarios_recentes = view_all_voluntarios(include_inactive=True)
                 id_novo_voluntario = int(voluntarios_recentes[voluntarios_recentes['nome_voluntario'] == novo_nome]['id_voluntario'].iloc[0])
                 
@@ -103,7 +95,8 @@ with tab_editar:
 
     voluntario_selecionado_nome = st.selectbox(
         "Selecione um voluntário para editar seus dados:",
-        options=lista_nomes_voluntarios
+        options=lista_nomes_voluntarios,
+        key="seletor_voluntario_edicao"
     )
 
     if voluntario_selecionado_nome != OPCAO_SELECIONE:
@@ -114,19 +107,32 @@ with tab_editar:
         todas_as_funcoes_edicao = view_all_funcoes()
         todos_os_servicos_edicao = view_all_servicos_fixos()
 
-        st.header(f"Editando: {dados_voluntario['nome_voluntario']}")
-
-        # --- FORMULÁRIO 1: DADOS PRINCIPAIS ---
-        with st.form(key=f"form_dados_principais_{id_voluntario_atual}"):
-            st.subheader("Dados Pessoais e Funções")
+        with st.form(key=f"form_edicao_{id_voluntario_atual}"):
+            st.header(f"Editando: {dados_voluntario['nome_voluntario']}")
             
+            st.subheader("Dados Pessoais")
             coluna_nome_edicao, coluna_telefone_edicao, coluna_limite_edicao = st.columns(3)
             with coluna_nome_edicao:
-                nome_editado = st.text_input("Nome Completo*", value=dados_voluntario['nome_voluntario'])
+                # ADICIONADO 'key'
+                nome_editado = st.text_input("Nome Completo*", value=dados_voluntario['nome_voluntario'], key=f"edicao_nome_{id_voluntario_atual}")
             with coluna_telefone_edicao:
-                telefone_editado = st.text_input("Telefone", value=dados_voluntario['telefone'])
+                # ADICIONADO 'key'
+                telefone_editado = st.text_input("Telefone", value=dados_voluntario['telefone'], key=f"edicao_tel_{id_voluntario_atual}")
             with coluna_limite_edicao:
-                limite_mensal_editado = st.number_input("Limite de escalas por mês*", min_value=1, max_value=10, value=int(dados_voluntario['limite_escalas_mes']))
+                # ADICIONADO 'key'
+                limite_mensal_editado = st.number_input("Limite de escalas por mês*", min_value=1, max_value=10, value=int(dados_voluntario['limite_escalas_mes']), key=f"edicao_limite_{id_voluntario_atual}")
+                
+                opcoes_nivel = ["Iniciante", "Intermediário", "Avançado"]
+                # CORREÇÃO: Usa .get() para evitar o KeyError, com um valor padrão seguro.
+                nivel_atual = dados_voluntario.get('nivel_experiencia', 'Iniciante')
+                indice_atual = opcoes_nivel.index(nivel_atual) if nivel_atual in opcoes_nivel else 0
+                
+                nivel_experiencia_editado = st.selectbox(
+                    "Nível de Experiência*",
+                    opcoes_nivel,
+                    index=indice_atual,
+                    key=f"edicao_nivel_{id_voluntario_atual}"
+                )
 
             st.divider()
 
@@ -148,14 +154,14 @@ with tab_editar:
                     selecionado = servico.id_servico in disponibilidade_atual_ids
                     if st.checkbox(servico.nome_servico, value=selecionado, key=f"edicao_servico_{id_voluntario_atual}_{servico.id_servico}"):
                         servicos_selecionados_edicao.append(servico.id_servico)
-            
+
             st.divider()
             st.subheader("Status do Voluntário")
-            status_ativo_editado = st.checkbox("Voluntário Ativo", value=dados_voluntario['ativo'])
+            status_ativo_editado = st.checkbox("Voluntário Ativo", value=dados_voluntario['ativo'], key=f"edicao_ativo_{id_voluntario_atual}")
 
-            if st.form_submit_button("Salvar Alterações do Perfil"):
+            if st.form_submit_button("Salvar Alterações"):
                 id_voluntario_inteiro = int(id_voluntario_atual)
-                update_voluntario(id_voluntario_inteiro, nome_editado, telefone_editado, int(limite_mensal_editado), status_ativo_editado)
+                update_voluntario(id_voluntario_inteiro, nome_editado, telefone_editado, int(limite_mensal_editado), status_ativo_editado, nivel_experiencia_editado)
                 update_funcoes_of_voluntario(id_voluntario_inteiro, funcoes_selecionadas_edicao)
                 update_disponibilidade_of_voluntario(id_voluntario_inteiro, servicos_selecionados_edicao)
                 st.success(f"Dados de {nome_editado} atualizados com sucesso!")

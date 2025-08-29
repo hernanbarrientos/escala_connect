@@ -66,12 +66,15 @@ def delete_funcao(id_funcao):
         conn.rollback(); st.error(f"Erro ao deletar função: {e}")
 
 # --- CRUD VOLUNTÁRIOS ---
-def add_voluntario(nome, telefone, limite_mes):
+def add_voluntario(nome, telefone, limite_mes, nivel_experiencia):
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO voluntarios (nome_voluntario, telefone, limite_escalas_mes) VALUES (%s, %s, %s)", (nome, telefone, limite_mes))
+            cur.execute(
+                "INSERT INTO voluntarios (nome_voluntario, telefone, limite_escalas_mes, nivel_experiencia) VALUES (%s, %s, %s, %s)", 
+                (nome, telefone, limite_mes, nivel_experiencia)
+            )
         conn.commit()
     except Exception as e:
         conn.rollback(); st.error(f"Erro ao adicionar voluntário: {e}")
@@ -88,6 +91,7 @@ def view_all_voluntarios(include_inactive=False):
 def get_voluntario_by_id(id_voluntario):
     conn = ensure_connection()
     if conn is None: return None
+    # Usar SELECT * garante que a nova coluna nivel_experiencia seja incluída.
     df = pd.read_sql(f"SELECT * FROM voluntarios WHERE id_voluntario = {id_voluntario}", conn)
     return df.iloc[0] if not df.empty else None
 
@@ -98,12 +102,16 @@ def get_voluntario_by_name(nome_voluntario):
     df = pd.read_sql(query, conn, params=(nome_voluntario,))
     return int(df['id_voluntario'].iloc[0]) if not df.empty else None
 
-def update_voluntario(id_voluntario, nome, telefone, limite_mes, ativo):
+# Altere a assinatura e o comando UPDATE
+def update_voluntario(id_voluntario, nome, telefone, limite_mes, ativo, nivel_experiencia):
     conn = ensure_connection()
     if conn is None: return
     try:
         with conn.cursor() as cur:
-            cur.execute("UPDATE voluntarios SET nome_voluntario = %s, telefone = %s, limite_escalas_mes = %s, ativo = %s WHERE id_voluntario = %s", (nome, telefone, limite_mes, ativo, id_voluntario))
+            cur.execute(
+                "UPDATE voluntarios SET nome_voluntario = %s, telefone = %s, limite_escalas_mes = %s, ativo = %s, nivel_experiencia = %s WHERE id_voluntario = %s",
+                (nome, telefone, limite_mes, ativo, nivel_experiencia, id_voluntario)
+            )
         conn.commit()
     except Exception as e:
         conn.rollback(); st.error(f"Erro ao atualizar voluntário: {e}")
@@ -433,133 +441,117 @@ def apagar_escala_do_mes(ano, mes):
         conn.rollback(); st.error(f"Erro ao limpar escala antiga: {e}")
 
 def gerar_escala_automatica(ano, mes):
-    """ ALGORITMO FINAL V13: Usa indisponibilidade por evento específico. """
+    """
+    ALGORITMO V16.1 (CORRIGIDO): Corrige o KeyError 'instancia' ao salvar a escala.
+    """
+    # --- 1. SETUP INICIAL E BUSCA DE DADOS ---
     apagar_escala_do_mes(ano, mes)
-
+    
     eventos = get_events_for_month(ano, mes)
-    if eventos.empty: return
+    if eventos.empty:
+        st.info("Não há eventos criados para este mês.")
+        return
 
+    eventos['data_evento_date_obj'] = pd.to_datetime(eventos['data_evento']).dt.date
     voluntarios_df = get_all_voluntarios_com_detalhes()
     cotas = get_cotas_all_servicos()
-    grupos_df = get_all_grupos_com_membros()
-    ids_grupos_validos = set(grupos_df['id_grupo'])
+    todas_funcoes = view_all_funcoes()
+
+    id_funcoes = {
+        nome: id for nome, id in zip(todas_funcoes['nome_funcao'].replace('Líder de Escala', 'Líder'), todas_funcoes['id_funcao'])
+    }
+
     escala_final = []
     contagem_escalas_mes = {int(vol_id): 0 for vol_id in voluntarios_df['id_voluntario']}
-    lista_voluntarios = voluntarios_df.to_dict('records')
+    escalados_por_data = {data: set() for data in eventos['data_evento_date_obj'].unique()}
 
-    conn = ensure_connection()
-    query_indisp = """
-        SELECT vi.id_voluntario, vi.id_evento
-        FROM voluntario_indisponibilidade_eventos vi
-        JOIN eventos e ON vi.id_evento = e.id_evento
-        WHERE EXTRACT(YEAR FROM e.data_evento) = %s AND EXTRACT(MONTH FROM e.data_evento) = %s
-    """
-    indisponibilidades_df = pd.read_sql(query_indisp, conn, params=(ano, mes))
-    indisponibilidades_por_voluntario = indisponibilidades_df.groupby('id_voluntario')['id_evento'].apply(list).to_dict()
-
+    # --- 2. PREPARAÇÃO DAS VAGAS E CANDIDATOS ---
+    vagas_a_preencher = []
     for _, evento in eventos.iterrows():
-        id_evento = int(evento['id_evento'])
-        id_servico = int(evento['id_servico_fixo'])
-
-        vagas_do_dia = []
-        cotas_do_servico = cotas[cotas['id_servico'] == id_servico]
-        for _, cota in cotas_do_servico.iterrows():
+        cotas_servico = cotas[cotas['id_servico'] == evento['id_servico_fixo']]
+        for _, cota in cotas_servico.iterrows():
             for i in range(1, int(cota['quantidade_necessaria']) + 1):
-                vagas_do_dia.append({'id_funcao': int(cota['id_funcao']), 'instancia': i})
+                vagas_a_preencher.append({
+                    'id_evento': evento['id_evento'],
+                    'id_servico_fixo': evento['id_servico_fixo'],
+                    'data_evento_date_obj': evento['data_evento_date_obj'],
+                    'id_funcao': int(cota['id_funcao']),
+                    'funcao_instancia': i
+                })
+    vagas_df = pd.DataFrame(vagas_a_preencher).sample(frac=1).reset_index(drop=True)
 
-        pool_candidatos_dia = []
-        for vol_dict in lista_voluntarios:
-            vol_id = int(vol_dict['id_voluntario'])
-            vol_disp = [int(d) for d in (vol_dict.get('disponibilidade') or []) if d is not None]
-
-            # MUDANÇA AQUI: Pega a lista de IDs de evento
-            ids_eventos_indisp_vol = indisponibilidades_por_voluntario.get(vol_id, [])
-            if (contagem_escalas_mes.get(vol_id, 0) < vol_dict.get('limite_escalas_mes', 99) and
-                id_servico in vol_disp and
-                id_evento not in ids_eventos_indisp_vol): # A nova verificação!
-                pool_candidatos_dia.append(vol_dict.copy())
-
-        grupos = {}
-        individuais = []
-        for vol in pool_candidatos_dia:
-            id_grupo = vol['id_grupo']
-            if pd.notna(id_grupo) and int(id_grupo) in ids_grupos_validos:
-                id_grupo_int = int(id_grupo)
-                if id_grupo_int not in grupos:
-                    grupos[id_grupo_int] = []
-                grupos[id_grupo_int].append(vol)
-            else:
-                individuais.append(vol)
-
-        random.shuffle(individuais)
-        ids_grupos_embaralhados = list(grupos.keys())
-        random.shuffle(ids_grupos_embaralhados)
-
-        escala_para_este_dia = []
+    # --- 3. FUNÇÃO AUXILIAR DE ALOCAÇÃO ---
+    def alocar_por_camada(vagas_df, voluntarios_df_camada, id_funcao_alvo, nivel_experiencia_alvo=None):
+        nonlocal escala_final, contagem_escalas_mes, escalados_por_data
         
-        # --- 1. Tentar alocar GRUPOS PRIMEIRO (Lógica 'Tudo ou Nada') ---
-        for id_grupo in ids_grupos_embaralhados:
-            membros = grupos[id_grupo]
-            vagas_temp = list(vagas_do_dia) # Cópia para simulação
-            plano_grupo = []
+        vagas_camada = vagas_df[vagas_df['id_funcao'] == id_funcao_alvo].copy()
+        
+        candidatos = voluntarios_df_camada[voluntarios_df_camada['funcoes'].apply(lambda x: id_funcao_alvo in (x or []))].copy()
+        if nivel_experiencia_alvo:
+            candidatos = candidatos[candidatos['nivel_experiencia'] == nivel_experiencia_alvo]
+        
+        candidatos = candidatos.sample(frac=1).reset_index(drop=True)
+        vagas_preenchidas_indices = []
+
+        for _, candidato in candidatos.iterrows():
+            candidato_id = int(candidato['id_voluntario'])
             
-            pode_escalar_grupo = True
-            for membro in membros:
-                funcoes_membro = [int(f) for f in (membro.get('funcoes') or []) if f is not None]
+            while contagem_escalas_mes.get(candidato_id, 0) < candidato['limite_escalas_mes']:
                 vaga_encontrada = False
-                for vaga in vagas_temp:
-                    if vaga['id_funcao'] in funcoes_membro:
-                        plano_grupo.append({'membro': membro, 'vaga': vaga})
-                        vagas_temp.remove(vaga)
+                for vaga_idx, vaga in vagas_camada.iterrows():
+                    if vaga_idx in vagas_preenchidas_indices:
+                        continue
+
+                    if (candidato_id not in escalados_por_data.get(vaga['data_evento_date_obj'], set()) and
+                        vaga['id_servico_fixo'] in (candidato.get('disponibilidade') or [])):
+                        
+                        escala_final.append({
+                            'id_evento': vaga['id_evento'], 'id_funcao': vaga['id_funcao'],
+                            'id_voluntario': candidato_id, 'funcao_instancia': vaga['funcao_instancia']
+                        })
+                        contagem_escalas_mes[candidato_id] += 1
+                        escalados_por_data[vaga['data_evento_date_obj']].add(candidato_id)
+                        vagas_preenchidas_indices.append(vaga_idx)
                         vaga_encontrada = True
                         break
-                if not vaga_encontrada:
-                    pode_escalar_grupo = False
-                    break
-            
-            if pode_escalar_grupo:
-                # Se a simulação deu certo, efetiva a escala
-                for item in plano_grupo:
-                    m = item['membro']
-                    v = item['vaga']
-                    escala_para_este_dia.append({
-                        'id_evento': id_evento, 'id_funcao': v['id_funcao'], 
-                        'id_voluntario': m['id_voluntario'], 'instancia': v['instancia']
-                    })
-                    vagas_do_dia.remove(v) # Remove a vaga da lista principal
                 
-                # Remove os membros do grupo da lista de individuais
-                ids_membros_grupo = {m['id_voluntario'] for m in membros}
-                individuais = [i for i in individuais if i['id_voluntario'] not in ids_membros_grupo]
-
-        # --- 2. Preencher as vagas restantes com INDIVIDUAIS ---
-        for vaga in vagas_do_dia:
-            for candidato in individuais:
-                funcoes_candidato = [int(f) for f in (candidato.get('funcoes') or []) if f is not None]
-                if vaga['id_funcao'] in funcoes_candidato:
-                    escala_para_este_dia.append({
-                        'id_evento': id_evento, 'id_funcao': vaga['id_funcao'], 
-                        'id_voluntario': candidato['id_voluntario'], 'instancia': vaga['instancia']
-                    })
-                    individuais.remove(candidato) # Remove para não escalar de novo no mesmo dia
+                if not vaga_encontrada:
                     break
+        
+        return vagas_preenchidas_indices
 
-        # Adiciona a escala do dia à escala final do mês
-        for item in escala_para_este_dia:
-            contagem_escalas_mes[item['id_voluntario']] += 1
-        escala_final.extend(escala_para_este_dia)
+    # --- 4. EXECUÇÃO DOS PASSES DE ALOCAÇÃO ---
+    if 'Líder' in id_funcoes:
+        indices_preenchidos = alocar_por_camada(vagas_df, voluntarios_df, id_funcoes['Líder'])
+        vagas_df.drop(indices_preenchidos, inplace=True)
 
-    # --- Salva a escala completa no banco de dados ---
+    if 'Store' in id_funcoes:
+        indices_preenchidos = alocar_por_camada(vagas_df, voluntarios_df, id_funcoes['Store'])
+        vagas_df.drop(indices_preenchidos, inplace=True)
+
+    if 'Apoio' in id_funcoes:
+        indices_preenchidos = alocar_por_camada(vagas_df, voluntarios_df, id_funcoes['Apoio'], 'Avançado')
+        vagas_df.drop(indices_preenchidos, inplace=True)
+        indices_preenchidos = alocar_por_camada(vagas_df, voluntarios_df, id_funcoes['Apoio'], 'Intermediário')
+        vagas_df.drop(indices_preenchidos, inplace=True)
+        indices_preenchidos = alocar_por_camada(vagas_df, voluntarios_df, id_funcoes['Apoio'], 'Iniciante')
+        vagas_df.drop(indices_preenchidos, inplace=True)
+
+    # --- 5. SALVAR RESULTADOS NO BANCO ---
     if escala_final:
         conn = ensure_connection()
         try:
             with conn.cursor() as cur:
-                args = [(e['id_evento'], e['id_funcao'], e['id_voluntario'], e['instancia']) for e in escala_final]
+                # CORREÇÃO: Alterado de e['instancia'] para e['funcao_instancia']
+                args = [(e['id_evento'], e['id_funcao'], e['id_voluntario'], e['funcao_instancia']) for e in escala_final]
                 cur.executemany("INSERT INTO escala (id_evento, id_funcao, id_voluntario, funcao_instancia) VALUES (%s, %s, %s, %s)", args)
             conn.commit()
-            st.success("Escala preenchida!")
+            st.success("Escala preenchida com a nova lógica de distribuição!")
         except Exception as e:
-            conn.rollback(); st.error(f"Erro ao salvar escala: {e}")
+            conn.rollback()
+            st.error(f"Erro ao salvar escala: {e}")
+
+
 
 def update_apenas_disponibilidade(id_voluntario, lista_ids_servicos):
     """ Atualiza apenas a disponibilidade de um voluntário. """
@@ -626,12 +618,13 @@ def get_voluntario_by_name(nome_voluntario):
     df = pd.read_sql(query, conn, params=(nome_voluntario,))
     return int(df['id_voluntario'].iloc[0]) if not df.empty else None
 
+# Adicione v.nivel_experiencia ao SELECT
 def get_all_voluntarios_com_detalhes():
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
     query = """
     SELECT 
-        v.id_voluntario, v.nome_voluntario, v.limite_escalas_mes, v.id_grupo,
+        v.id_voluntario, v.nome_voluntario, v.limite_escalas_mes, v.id_grupo, v.nivel_experiencia,
         ARRAY_AGG(DISTINCT vf.id_funcao) as funcoes,
         ARRAY_AGG(DISTINCT vd.id_servico) as disponibilidade
     FROM voluntarios v
