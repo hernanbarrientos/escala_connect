@@ -1,6 +1,8 @@
 # Arquivo de segredos do Streamlit
 .streamlit/secrets.toml
 
+./criar_primeiro_admin.py
+
 # Arquivos de ambiente virtual do Python
 venv/
 *.venv

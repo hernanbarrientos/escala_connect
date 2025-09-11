@@ -1,17 +1,31 @@
 import streamlit as st
-# Importa as novas funções que criamos
-from database import add_funcao, view_all_funcoes, update_funcao, delete_funcao
+# Importa as funções do banco de dados, incluindo a de ministérios
+from database import add_funcao, view_all_funcoes, update_funcao, delete_funcao, get_all_ministerios
 import style
 
+# --- NOVO: Verificação de Login no topo da página ---
+# Esta verificação deve ser adicionada em TODAS as páginas, exceto a de Login.
+if not st.session_state.get('logged_in'):
+    st.error("Acesso negado. Por favor, faça o login primeiro na página de Login.")
+    st.stop() # Interrompe a execução da página se o usuário não estiver logado
 
+# Aplica o estilo global
 style.apply_style()
 
 def main():
-    st.set_page_config(page_title="Gestão de Voluntários", layout="wide")
-    st.title("Sistema de Escala de Voluntários - CONNECT")
+    st.set_page_config(page_title="Gerenciar Funções", layout="wide")
+    
+    # Pega o ID do ministério que foi salvo no momento do login
+    id_ministerio_logado = st.session_state['id_ministerio_logado']
+    
+    # Busca o nome do ministério para uma mensagem de boas-vindas
+    todos_ministerios_df = get_all_ministerios()
+    nome_ministerio = todos_ministerios_df[todos_ministerios_df['id_ministerio'] == id_ministerio_logado]['nome_ministerio'].iloc[0]
+    
+    st.title(f"Funções do Ministério {nome_ministerio}")
 
     # --- Seção para Gerenciar Funções ---
-    st.header("Gerenciar Funções")
+    st.header("Adicionar e Editar Funções")
 
     # Formulário para adicionar nova função
     with st.form("nova_funcao_form", clear_on_submit=True):
@@ -21,8 +35,8 @@ def main():
         
         if submitted:
             if novo_nome:
-                add_funcao(novo_nome, nova_descricao)
-                # st.rerun() é o novo st.experimental_rerun(), atualiza a página
+                # A função agora recebe o ID do ministério do usuário logado
+                add_funcao(novo_nome, nova_descricao, id_ministerio_logado)
                 st.rerun() 
             else:
                 st.warning("O nome da função não pode ser vazio.")
@@ -32,13 +46,14 @@ def main():
     # --- Seção para Visualizar e Editar Funções Existentes ---
     st.subheader("Funções Existentes")
     
-    df_funcoes = view_all_funcoes()
+    # A função agora busca apenas as funções do ministério do usuário logado
+    df_funcoes = view_all_funcoes(id_ministerio_logado)
     
     if df_funcoes.empty:
-        st.info("Nenhuma função cadastrada ainda.")
+        st.info("Nenhuma função cadastrada para este ministério ainda.")
     else:
         # Cria um cabeçalho para nossa lista
-        col1, col2, col3 = st.columns([1, 2, 5])
+        col1, col2, col3 = st.columns([2, 2, 8])
         with col1:
             st.write("**Função**")
         with col2:
@@ -50,7 +65,7 @@ def main():
             nome_funcao = row['nome_funcao']
             descricao_funcao = row['descricao']
 
-            col1, col2, col3 = st.columns([1, 2, 5])
+            col1, col2, col3 = st.columns([2, 2, 8])
 
             with col1:
                 st.write(nome_funcao)
@@ -71,7 +86,6 @@ def main():
                 if st.button("🗑️ Excluir", key=f"del_{id_funcao}"):
                     delete_funcao(id_funcao)
                     st.rerun()
-
 
 if __name__ == '__main__':
     main()

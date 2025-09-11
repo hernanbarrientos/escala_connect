@@ -1,15 +1,25 @@
 import streamlit as st
 from database import (
     add_servico_fixo, view_all_servicos_fixos, update_servico_fixo, delete_servico_fixo,
-    view_all_funcoes, get_cotas_for_servico, update_cotas_servico
+    view_all_funcoes, get_cotas_for_servico, update_cotas_servico, get_all_ministerios
 )
 import style
 
+# --- NOVO: Verificação de Login no topo da página ---
+if not st.session_state.get('logged_in'):
+    st.error("Acesso negado. Por favor, faça o login primeiro.")
+    st.stop()
 
 style.apply_style()
 
 st.set_page_config(page_title="Gerenciar Serviços", layout="wide")
-st.title("Gerenciar Serviços Fixos e Cotas de Funções")
+
+# --- NOVO: Pega dados do usuário logado ---
+id_ministerio_logado = st.session_state['id_ministerio_logado']
+todos_ministerios_df = get_all_ministerios()
+nome_ministerio = todos_ministerios_df[todos_ministerios_df['id_ministerio'] == id_ministerio_logado]['nome_ministerio'].iloc[0]
+
+st.title(f"Serviços e Cotas do Ministério {nome_ministerio}")
 
 # Dicionário para mapear o nome do dia da semana para o número
 dias_semana_map = {
@@ -28,8 +38,9 @@ with st.form("novo_servico_form", clear_on_submit=True):
     if submitted:
         if nome_servico:
             dia_semana_num = dias_semana_map[dia_semana_nome]
-            add_servico_fixo(nome_servico, dia_semana_num)
-            st.rerun()
+            # << ALTERADO: Passa o id_ministerio_logado para a função
+            add_servico_fixo(nome_servico, dia_semana_num, id_ministerio_logado)
+            st.rerun() 
         else:
             st.warning("O nome do serviço é obrigatório.")
 
@@ -37,11 +48,13 @@ st.divider()
 
 # Seção para visualizar e editar serviços e cotas
 st.header("Serviços Cadastrados")
-df_servicos = view_all_servicos_fixos()
-df_funcoes = view_all_funcoes()
+
+# << ALTERADO: Busca serviços e funções filtrando pelo ministério logado
+df_servicos = view_all_servicos_fixos(id_ministerio_logado)
+df_funcoes = view_all_funcoes(id_ministerio_logado)
 
 if df_servicos.empty:
-    st.info("Nenhum serviço fixo cadastrado ainda.")
+    st.info("Nenhum serviço fixo cadastrado para este ministério.")
 else:
     for _, servico in df_servicos.iterrows():
         # Expander para cada serviço
@@ -67,7 +80,7 @@ else:
                 cotas_atuais = get_cotas_for_servico(servico['id_servico'])
                 cotas_para_salvar = {}
 
-                # Cria um campo numérico para cada função existente
+                # Cria um campo numérico para cada função existente no ministério
                 for _, funcao in df_funcoes.iterrows():
                     quantidade_atual = cotas_atuais.get(funcao['id_funcao'], 0)
                     cotas_para_salvar[funcao['id_funcao']] = st.number_input(
@@ -86,7 +99,7 @@ else:
                         # Atualiza os dados do serviço E as cotas
                         update_servico_fixo(servico['id_servico'], edit_nome, dia_edit_num, edit_ativo)
                         update_cotas_servico(servico['id_servico'], cotas_para_salvar)
-                        st.rerun()
+                        st.rerun() 
                 with col2:
                     if st.form_submit_button("🗑️ Excluir Serviço"):
                         delete_servico_fixo(servico['id_servico'])
