@@ -2,8 +2,21 @@
 
 import streamlit as st
 from database import verificar_login
+import style
+style.apply_style()
 
 st.set_page_config(page_title="Login - Escala Connect", layout="centered")
+
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebar"] {
+            display: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # --- Lógica de Redirecionamento Aprimorada ---
 # Se o usuário já está logado, ele não deveria nem ver a tela de login.

@@ -7,12 +7,17 @@ import style
 
 # --- Verificação de Login no topo da página ---
 if not st.session_state.get('logged_in'):
-    st.error("Acesso negado. Por favor, faça o login primeiro.")
-    st.stop()
+    st.switch_page("Login.py")
 
 # Aplica o estilo global e a configuração da página
 style.apply_style()
 st.set_page_config(page_title="Gerenciar Voluntários", layout="wide")
+
+# << NOVO: Dicionário com os meses em português para garantir a tradução >>
+meses_pt = {
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+    7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+}
 
 # Pega o ID do ministério do usuário logado
 id_ministerio_logado = st.session_state['id_ministerio_logado']
@@ -152,7 +157,7 @@ with tab_editar:
             
             coluna_mes, coluna_ano = st.columns(2)
             with coluna_mes:
-                mes_para_ver = st.selectbox("Selecione o Mês", range(1, 13), index=datetime.now().month - 1, format_func=lambda mes: calendar.month_name[mes].capitalize(), key=f"seletor_mes_{id_voluntario_atual}")
+                mes_para_ver = st.selectbox("Selecione o Mês", range(1, 13), index=datetime.now().month - 1, format_func=lambda mes: meses_pt[mes].capitalize(), key=f"seletor_mes_{id_voluntario_atual}")
             with coluna_ano:
                 ano_para_ver = st.number_input("Selecione o Ano", min_value=datetime.now().year, max_value=datetime.now().year + 5, value=datetime.now().year, key=f"seletor_ano_{id_voluntario_atual}")
             

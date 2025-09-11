@@ -7,8 +7,7 @@ import style
 
 # --- NOVO: Verificação de Login no topo da página ---
 if not st.session_state.get('logged_in'):
-    st.error("Acesso negado. Por favor, faça o login primeiro.")
-    st.stop()
+    st.switch_page("Login.py")
 
 style.apply_style()
 

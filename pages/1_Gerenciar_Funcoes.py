@@ -6,8 +6,7 @@ import style
 # --- NOVO: Verificação de Login no topo da página ---
 # Esta verificação deve ser adicionada em TODAS as páginas, exceto a de Login.
 if not st.session_state.get('logged_in'):
-    st.error("Acesso negado. Por favor, faça o login primeiro na página de Login.")
-    st.stop() # Interrompe a execução da página se o usuário não estiver logado
+    st.switch_page("Login.py")
 
 # Aplica o estilo global
 style.apply_style()

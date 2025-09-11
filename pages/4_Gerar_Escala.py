@@ -9,8 +9,7 @@ from collections import defaultdict
 
 # --- Verificação de Login no topo da página ---
 if not st.session_state.get('logged_in'):
-    st.error("Acesso negado. Por favor, faça o login primeiro.")
-    st.stop()
+    st.switch_page("Login.py")
 
 # Aplica o estilo global e a configuração da página
 style.apply_style()
