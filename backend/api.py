@@ -9,7 +9,7 @@ import numpy as np
 import time
 
 # Bloco de importação completo e corrigido
-from database import (
+from backend.database import (
     add_funcao,
     add_servico_fixo,
     add_voluntario,
