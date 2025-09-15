@@ -1,0 +1,24 @@
+/* arquivo: frontend/src/App.css */
+
+/* Container principal que envolve o conteúdo de todas as páginas */
+.container {
+  max-width: 1200px;  /* Largura máxima para o conteúdo */
+  margin: 0 auto;     /* Centraliza o container na página */
+  padding: 2rem;      /* Adiciona "respiro" nas laterais e no topo/baixo */
+}
+
+/* Ajuste no tamanho do título principal das páginas */
+h1 {
+  font-size: 2.2rem; /* Reduz um pouco o tamanho do título */
+  margin-bottom: 2rem;
+  color: var(--primary-text-color);
+}
+
+/* Mensagem de erro genérica */
+.error-message {
+  color: var(--danger-color);
+  background-color: rgba(255, 75, 75, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+}

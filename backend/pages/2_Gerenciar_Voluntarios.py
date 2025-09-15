@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import calendar
 from database import *
-import style
+import backend.style as style
 
 # --- Verificação de Login no topo da página ---
 if not st.session_state.get('logged_in'):

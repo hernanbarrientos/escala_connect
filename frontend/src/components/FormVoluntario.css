@@ -1,0 +1,73 @@
+/* arquivo: frontend/src/components/FormVoluntario.css */
+.voluntario-form .form-row {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.voluntario-form .form-group {
+  flex: 1;
+}
+
+.voluntario-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #a0a3bd;
+  font-weight: 500;
+}
+
+.voluntario-form input[type="text"],
+.voluntario-form input[type="number"],
+.voluntario-form select {
+  width: 100%;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #414351;
+  background-color: #1c1c24;
+  color: #f0f2f6;
+  font-size: 1rem;
+}
+
+.checkbox-group {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #414351;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.checkbox-item input[type="checkbox"] {
+  margin-right: 0.75rem;
+  width: 18px;
+  height: 18px;
+}
+
+.form-group-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.btn-cancel, .btn-save {
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-cancel { background-color: #414351; color: #f0f2f6; }
+.btn-save { background-color: #0068c9; color: white; }

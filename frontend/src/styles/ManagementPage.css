@@ -1,0 +1,190 @@
+/* arquivo: frontend/src/styles/ManagementPage.css (Versão Aprimorada) */
+
+/* --- CABEÇALHO PADRÃO --- */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+.page-header h1 { margin: 0; }
+.add-btn {
+    padding: 0.8rem 1.5rem; border-radius: 8px; border: none;
+    background-color: var(--primary-accent-color); color: white;
+    font-size: 1rem; font-weight: bold; cursor: pointer;
+    transition: background-color 0.2s;
+}
+.add-btn:hover { background-color: #0055a4; }
+
+/* --- BARRA DE CONTROLES (Busca, etc.) --- */
+.controls-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+.search-input {
+  padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid var(--border-color);
+  background-color: #262730; color: var(--primary-text-color);
+  font-size: 1rem; width: 300px;
+}
+.view-selector { display: flex; align-items: center; gap: 1rem; }
+.view-selector select {
+  padding: 0.7rem; border-radius: 8px; border: 1px solid var(--border-color);
+  background-color: #262730; color: var(--primary-text-color); font-size: 1rem;
+}
+
+/* --- TABELA PADRÃO (COM CORREÇÕES DE ALINHAMENTO) --- */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: #262730;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.95rem;
+}
+
+.data-table th, .data-table td {
+    padding: 1rem 1.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle; /* Garante alinhamento vertical */
+}
+
+.data-table th {
+    background-color: #1c1c24;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+    white-space: nowrap; /* Impede que o texto do cabeçalho quebre linha */
+}
+
+/* Define que a primeira coluna deve tentar ocupar o máximo de espaço possível */
+.data-table td:first-child, .data-table th:first-child {
+    width: 50%;
+}
+
+/* Define que a última coluna (Ações) deve ter uma largura mínima e não quebrar linha */
+.data-table td:last-child, .data-table th:last-child {
+    text-align: right;
+    width: 1%;
+    white-space: nowrap;
+}
+
+.action-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 1.2rem; margin-left: 1rem; padding: 0.3rem;
+    color: var(--secondary-text-color); transition: color 0.2s;
+}
+.action-btn.edit-btn:hover { color: #0084ff; }
+.action-btn.delete-btn:hover { color: #ff4b4b; }
+.action-btn.quota-btn:hover { color: #20c997; }
+
+/* Container do formulário dentro do modal */
+.servico-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem; /* Espaçamento consistente entre os campos */
+}
+
+/* Agrupamento de cada campo (label + input) */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem; /* Espaçamento entre o label e o input */
+}
+
+/* Estilo dos Labels (Nome da Função, etc.) */
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #c0c0c0; /* Um cinza claro para não competir com o input */
+}
+
+/* Estilo unificado para Inputs de texto/número e o Select */
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group select {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  background-color: #2c2c38; /* Fundo escuro para os campos */
+  border: 1px solid #4a4a5a; /* Borda sutil */
+  border-radius: 8px;
+  color: #e0e0e0; /* Cor do texto digitado */
+  font-size: 1rem;
+  outline: none; /* Remove o contorno padrão do navegador */
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Efeito de foco quando o usuário clica no campo */
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group select:focus {
+  border-color: #007bff; /* Cor de destaque (azul) */
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25); /* Sombra suave de destaque */
+}
+
+/* Oculta a seta padrão do <select> para podermos adicionar uma customizada */
+.form-group select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  /* Adiciona a nossa seta customizada (um SVG de uma seta para baixo) */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23c0c0c0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1em;
+  padding-right: 2.5rem; /* Adiciona espaço para a seta não sobrepor o texto */
+}
+
+/* Estilo para o texto de ajuda (small) */
+.form-group small {
+  font-size: 0.8rem;
+  color: #999;
+  margin-top: -0.25rem; /* Aproxima um pouco o texto do campo */
+}
+
+/* Container dos botões (Cancelar, Salvar) */
+.form-actions {
+  display: flex;
+  justify-content: flex-end; /* Alinha os botões à direita */
+  gap: 0.75rem; /* Espaço entre os botões */
+  margin-top: 1rem; /* Espaço acima dos botões */
+}
+
+/* Estilos base dos botões (já definidos, mas podemos refinar) */
+.form-actions .btn-cancel,
+.form-actions .btn-save {
+  padding: 0.7rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+/* Botão de Cancelar (ação secundária) */
+.form-actions .btn-cancel {
+  background-color: #4a4a5a;
+  color: #e0e0e0;
+}
+
+.form-actions .btn-cancel:hover {
+  background-color: #5a5a6a;
+}
+
+/* Botão de Salvar (ação primária) */
+.form-actions .btn-save {
+  background-color: #007bff; /* Cor primária (azul) */
+  color: white;
+}
+
+.form-actions .btn-save:hover {
+  background-color: #0056b3;
+}
+
+/* Pequeno efeito ao clicar no botão */
+.form-actions button:active {
+    transform: scale(0.98);
+}

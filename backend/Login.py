@@ -2,7 +2,7 @@
 
 import streamlit as st
 from database import verificar_login
-import style
+import backend.style as style
 style.apply_style()
 
 st.set_page_config(page_title="Login - Escala Connect", layout="centered")

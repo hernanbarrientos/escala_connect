@@ -1,0 +1,111 @@
+/* arquivo: frontend/src/pages/GerarEscalaPage.css */
+
+.escala-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    background-color: var(--card-background);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.escala-controls select, .escala-controls input {
+    padding: 0.7rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: #1c1c24;
+    color: var(--primary-text-color);
+    font-size: 1rem;
+}
+
+/* --- NOVO: Estilos para as Linhas de Serviço --- */
+.servico-row {
+    margin-bottom: 2.5rem;
+}
+
+.servico-row-header {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--secondary-text-color);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* << ALTERADO: Transforma o grid em um flexbox que permite scroll horizontal >> */
+.escala-grid {
+    display: flex; /* Muda de grid para flex */
+    gap: 1.5rem;
+    overflow-x: auto; /* Adiciona scroll se os cards não couberem */
+    padding-bottom: 1rem; /* Espaço para a barra de scroll */
+}
+
+.evento-card {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.2rem;
+    flex: 0 0 22%; /* << ALTERADO: Define uma largura fixa para os cards */
+}
+
+.evento-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+}
+
+.evento-card-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.evento-card-header .data {
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.escala-item {
+    display: flex;
+    margin-bottom: 0.5rem;
+}
+
+.escala-item-funcao {
+    font-weight: bold;
+    color: var(--secondary-text-color);
+    width: 80px;
+}
+
+.escala-item-voluntario {
+    color: var(--primary-text-color);
+}
+
+.escala-item-select {
+    width: 100%;
+    padding: 0.3rem;
+    border-radius: 6px;
+    border: 1px solid var(--primary-accent-color);
+    background-color: #1c1c24;
+    color: var(--primary-text-color);
+    font-size: 0.9rem;
+}
+
+.escala-item-voluntario.editable {
+    cursor: pointer;
+    transition: background-color 0.2s;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.escala-item-voluntario.editable:hover {
+    background-color: rgba(0, 104, 201, 0.3);
+}
+
+/* --- NOVO: Estilos para a Tabela de Contagem --- */
+.contagem-header {
+    margin-top: 3rem;
+    margin-bottom: 1.5rem;
+}

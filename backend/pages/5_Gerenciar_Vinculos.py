@@ -7,7 +7,7 @@ from database import (
     view_all_servicos_fixos, update_apenas_disponibilidade, get_all_ministerios,
     get_voluntario_by_id, update_voluntario
 )
-import style
+import backend.style as style
 
 # --- Verificação de Login no topo da página ---
 if not st.session_state.get('logged_in'):

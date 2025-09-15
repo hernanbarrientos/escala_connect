@@ -3,7 +3,7 @@ from database import (
     add_servico_fixo, view_all_servicos_fixos, update_servico_fixo, delete_servico_fixo,
     view_all_funcoes, get_cotas_for_servico, update_cotas_servico, get_all_ministerios
 )
-import style
+import backend.style as style
 
 # --- NOVO: Verificação de Login no topo da página ---
 if not st.session_state.get('logged_in'):

@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from database import *
-import style
+import backend.style as style
 
 # --- Verificação de Login ---
 if not st.session_state.get('logged_in'):

@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime
 import calendar
 from database import *
-import style
-from pdf_generator import gerar_pdf_escala
+import backend.style as style
+from backend.pdf_generator import gerar_pdf_escala
 from collections import defaultdict
 
 # --- Verificação de Login no topo da página ---

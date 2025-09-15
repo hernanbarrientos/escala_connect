@@ -1,0 +1,49 @@
+/* arquivo: frontend/src/components/Navbar.css */
+
+.navbar {
+  background-color: #1c1c24;
+  padding: 1.2rem 2.5rem; /* Aumenta o espaçamento interno */
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.nav-logo {
+  color: var(--primary-text-color);
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.nav-links {
+  display: flex;
+  gap: 2rem; /* Aumenta o espaçamento entre os links */
+}
+
+.nav-links a {
+  color: var(--secondary-text-color);
+  text-decoration: none;
+  font-size: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-bottom-color 0.2s;
+}
+
+.nav-links a:hover {
+  color: #ffffff;
+}
+
+.nav-links a.active {
+  color: #ffffff;
+  font-weight: 500;
+  border-bottom-color: var(--primary-accent-color);
+}

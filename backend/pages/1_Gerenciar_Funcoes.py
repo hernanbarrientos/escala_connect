@@ -1,7 +1,7 @@
 import streamlit as st
 # Importa as funções do banco de dados, incluindo a de ministérios
 from database import add_funcao, view_all_funcoes, update_funcao, delete_funcao, get_all_ministerios
-import style
+import backend.style as style
 
 # --- NOVO: Verificação de Login no topo da página ---
 # Esta verificação deve ser adicionada em TODAS as páginas, exceto a de Login.

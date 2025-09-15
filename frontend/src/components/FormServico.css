@@ -1,0 +1,54 @@
+/* arquivo: frontend/src/components/FormServico.css */
+
+.servico-form .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.servico-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #a0a3bd;
+}
+
+.servico-form input[type="text"], .servico-form select {
+  width: 100%;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #414351;
+  background-color: #1c1c24;
+  color: #f0f2f6;
+  font-size: 1rem;
+}
+
+.servico-form .form-group-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.servico-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.servico-form .btn-cancel, .servico-form .btn-save {
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.servico-form .btn-cancel {
+  background-color: #414351;
+  color: #f0f2f6;
+}
+
+.servico-form .btn-save {
+  background-color: #0068c9;
+  color: white;
+}

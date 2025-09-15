@@ -1,0 +1,118 @@
+/* arquivo: frontend/src/pages/FuncoesPage.css (Versão Refinada) */
+
+/* Container principal que centraliza e envelopa a ferramenta */
+.funcoes-container {
+    max-width: 700px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background-color: var(--card-background);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.funcoes-container h1 {
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 2rem;
+}
+
+/* Formulário de adição */
+.add-form {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2.5rem;
+}
+
+.add-form input {
+  flex-grow: 1;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: #1c1c24;
+  color: var(--primary-text-color);
+  font-size: 1rem;
+}
+
+.add-form input:focus {
+    outline: none;
+    border-color: var(--primary-accent-color);
+}
+
+.add-form button {
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--primary-accent-color);
+  color: white;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.add-form button:hover {
+  background-color: #0055a4;
+}
+
+/* Lista de cards de função */
+.card-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.funcao-card {
+  background-color: #1c1c24; /* Um tom mais escuro para contraste */
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  font-size: 1.1rem;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease-in-out;
+}
+
+.funcao-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 104, 201, 0.5);
+}
+
+.view-mode, .edit-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 1rem;
+}
+
+.card-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  margin-left: 0.5rem;
+  color: var(--secondary-text-color);
+  transition: color 0.2s;
+}
+
+.edit-btn:hover { color: #0084ff; }
+.delete-btn:hover { color: var(--danger-color); }
+
+.edit-mode input {
+  flex-grow: 1;
+  background-color: var(--background-color);
+  color: white;
+  border: 1px solid #0068c9;
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.edit-mode button {
+  background-color: #0068c9;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
