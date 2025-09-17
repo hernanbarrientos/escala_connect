@@ -49,6 +49,8 @@ from backend.database import (
     get_all_voluntarios_com_detalhes_puro
 )
 from backend.auth import create_access_token, get_current_user, Token
+from dotenv import load_dotenv
+load_dotenv()
 
 
 
