@@ -1,0 +1,75 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: calc(100vh - 150px); /* Ajusta a altura para descontar o navbar e padding */
+}
+
+.login-form {
+  padding: 2.5rem;
+  background-color: var(--card-background);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.login-form h2 {
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1.8rem;
+}
+
+/* Reutilizando os estilos que já criamos para outros formulários */
+.login-form .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.login-form .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--secondary-text-color);
+}
+
+.login-form .form-group input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  background-color: #2c2c38;
+  border: 1px solid #4a4a5a;
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-size: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-form .form-group input:focus {
+  outline: none;
+  border-color: var(--primary-accent-color);
+}
+
+.login-form .btn-save {
+  width: 100%;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--primary-accent-color);
+  color: white;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 1rem;
+  transition: background-color 0.2s;
+}
+
+.login-form .btn-save:hover {
+    background-color: #0055a4;
+}
+
+.login-form .error-message {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: var(--danger-color);
+}

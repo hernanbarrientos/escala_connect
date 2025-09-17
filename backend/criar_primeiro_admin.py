@@ -1,29 +1,39 @@
-# Arquivo: criar_primeiro_admin.py
+from getpass import getpass
+# Importa as funções do novo arquivo db_utils
+from db_utils import get_all_ministerios_puro, criar_usuario_puro
 
-import pandas as pd
-from getpass import getpass  # Para digitar a senha de forma segura no terminal
-from database import get_all_ministerios, criar_usuario
+def get_script_connection():
+    """Lê as credenciais do novo local 'config/secrets.toml'."""
+    try:
+        # Caminho correto a partir da raiz do projeto
+        secrets_path = os.path.join("backend", "config", "secrets.toml")
+        secrets = toml.load(secrets_path)
+        credentials = secrets["postgres"]
+        if 'sslmode' not in credentials:
+            credentials['sslmode'] = 'require'
+        return psycopg2.connect(**credentials)
+    except FileNotFoundError:
+        print(f"ERRO: Arquivo de segredos não encontrado em '{secrets_path}'")
+        return None
+    except Exception as e:
+        print(f"ERRO DE CONEXÃO: {e}")
+        return None
+
 
 def main():
     print("--- Ferramenta de Criação de Administradores ---")
     
-    # 1. Listar os ministérios disponíveis
-    ministerios_df = get_all_ministerios()
+    ministerios_df = get_all_ministerios_puro()
     if ministerios_df.empty:
-        print("\nERRO: Nenhum ministério encontrado no banco de dados.")
-        print("Por favor, cadastre um ministério primeiro antes de criar um usuário.")
+        print("\nERRO: Nenhum ministério encontrado. Cadastre um ministério antes de criar um usuário.")
         return
         
     print("\nMinistérios disponíveis:")
     for _, row in ministerios_df.iterrows():
         print(f"  ID: {row['id_ministerio']} -> Nome: {row['nome_ministerio']}")
         
-    # 2. Pedir os dados ao usuário
     try:
-        id_ministerio_input = input("\nDigite o ID do ministério para o novo admin: ")
-        id_ministerio = int(id_ministerio_input)
-        
-        # Valida se o ID existe
+        id_ministerio = int(input("\nDigite o ID do ministério para o novo admin: "))
         if id_ministerio not in ministerios_df['id_ministerio'].values:
             print(f"ERRO: ID de ministério '{id_ministerio}' inválido.")
             return
@@ -33,20 +43,22 @@ def main():
         password_confirm = getpass("Confirme a senha: ")
 
         if password != password_confirm:
-            print("\nERRO: As senhas não coincidem. Operação cancelada.")
+            print("\nERRO: As senhas não coincidem.")
             return
             
         if not username or not password:
-            print("\nERRO: Usuário e senha não podem ser vazios. Operação cancelada.")
+            print("\nERRO: Usuário e senha não podem ser vazios.")
             return
 
-        # 3. Chamar a função para criar o usuário no banco
-        print(f"\nCriando usuário '{username}' para o ministério ID {id_ministerio}...")
-        criar_usuario(username, password, id_ministerio)
-        print("\nOperação concluída. Verifique a mensagem de sucesso ou erro acima.")
+        print(f"\nCriando usuário '{username}'...")
+        sucesso = criar_usuario_puro(username, password, id_ministerio)
+        if sucesso:
+            print("Usuário criado com sucesso!")
+        else:
+            print("Falha ao criar usuário. Verifique o log de erro acima.")
 
     except ValueError:
-        print("\nERRO: O ID do ministério precisa ser um número. Operação cancelada.")
+        print("\nERRO: O ID do ministério precisa ser um número.")
     except Exception as e:
         print(f"\nOcorreu um erro inesperado: {e}")
 

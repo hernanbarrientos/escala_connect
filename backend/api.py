@@ -1,14 +1,15 @@
 # Arquivo: api.py (Versão com Indentação Corrigida)
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
 import pandas as pd
 from pydantic import BaseModel
 from typing import Dict, List
 import numpy as np
-import time
+from datetime import datetime
+from collections import defaultdict
 
-# Bloco de importação completo e corrigido
 from backend.database import (
     add_funcao,
     add_servico_fixo,
@@ -24,7 +25,9 @@ from backend.database import (
     get_all_ministerios,
     get_all_voluntarios_com_detalhes,
     get_cotas_for_servico,
+    get_cotas_all_servicos, # <-- Adicionada
     get_disponibilidade_of_voluntario,
+    get_events_for_month, # <-- Adicionada
     update_escala_entry,
     get_escala_completa,
     get_funcoes_of_voluntario,
@@ -37,10 +40,15 @@ from backend.database import (
     update_grupo,
     update_servico_fixo,
     update_voluntario,
+    verificar_login, # <-- Sua função de login
     view_all_funcoes,
     view_all_servicos_fixos,
-    view_all_voluntarios
+    view_all_voluntarios,
+    get_all_voluntarios_com_detalhes_puro
 )
+from backend.auth import create_access_token, get_current_user, Token
+
+
 
 app = FastAPI(title="API da Escala Connect")
 
@@ -57,6 +65,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# NOVO ENDPOINT DE LOGIN
+@app.post("/token", response_model=Token, tags=["Autenticação"])
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    # Altere esta linha para chamar a função pura
+    id_ministerio = verificar_login_puro(form_data.username, form_data.password)
+    
+    if not id_ministerio:
+        raise HTTPException(
+            status_code=401,
+            detail="Usuário ou senha incorretos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token = create_access_token(
+        data={"sub": form_data.username, "id_ministerio": id_ministerio}
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# NOVO ENDPOINT PROTEGIDO (EXEMPLO)
+@app.get("/users/me", tags=["Autenticação"])
+async def read_users_me(current_user: dict = Depends(get_current_user)):
+    return current_user
 
 # --- Endpoints da API ---
 @app.get("/")
@@ -76,6 +106,63 @@ def get_todos_ministerios():
     finally:
         if conn:
             conn.close()
+
+# NOVO ENDPOINT DE DASHBOARD
+@app.get("/ministerios/{id_ministerio}/dashboard", tags=["Dashboard"])
+def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_current_user)):
+    if current_user["id_ministerio"] != id_ministerio:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado")
+
+    # Usa a nova função "pura"
+    voluntarios_df = get_all_voluntarios_com_detalhes_puro(id_ministerio)
+    grupos_df = get_all_grupos_com_membros(id_ministerio)
+    funcoes_df = view_all_funcoes(id_ministerio)
+    eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
+    cotas_df = get_cotas_all_servicos()
+    
+    todos_voluntarios_com_inativos_df = view_all_voluntarios(id_ministerio, include_inactive=True)
+    voluntarios_inativos = todos_voluntarios_com_inativos_df[~todos_voluntarios_com_inativos_df['ativo']]
+
+    # --- LÓGICA CORRIGIDA E ADICIONADA ---
+    voluntarios_sem_funcao_df = voluntarios_df[voluntarios_df['funcoes'].apply(lambda x: not x)]
+    lista_voluntarios_sem_funcao = voluntarios_sem_funcao_df['nome_voluntario'].tolist()
+    
+    total_vagas_mes = 0
+    if not eventos_mes_atual_df.empty:
+        for _, evento in eventos_mes_atual_df.iterrows():
+            total_vagas_mes += cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]['quantidade_necessaria'].sum()
+
+    niveis_contagem = {}
+    if not voluntarios_df.empty:
+        niveis_contagem = voluntarios_df['nivel_experiencia'].value_counts().to_dict()
+        
+    contagem_funcoes = {}
+    if not voluntarios_df.empty and not funcoes_df.empty:
+        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
+        contagem = defaultdict(int)
+        for funcoes_lista in voluntarios_df['funcoes']:
+            if funcoes_lista:
+                for id_funcao in funcoes_lista:
+                    nome_funcao = funcoes_map.get(id_funcao)
+                    if nome_funcao:
+                        contagem[nome_funcao] += 1
+        contagem_funcoes = dict(contagem)
+
+    return {
+        "kpis": {
+            "voluntarios_ativos": len(voluntarios_df),
+            "grupos": len(grupos_df),
+            "eventos_mes": len(eventos_mes_atual_df),
+            "vagas_mes": int(total_vagas_mes)
+        },
+        "grafico_niveis": niveis_contagem,
+        "grafico_funcoes": contagem_funcoes,
+        "pontos_atencao": {
+            "voluntarios_inativos": voluntarios_inativos['nome_voluntario'].tolist(),
+            "voluntarios_sem_funcao": lista_voluntarios_sem_funcao,
+        }
+    }
+
 
 # --- Endpoints de Funções ---
 class FuncaoBase(BaseModel):
@@ -390,3 +477,89 @@ def update_vaga_na_escala(vaga: VagaUpdate):
         
         # Continua retornando o erro 500 para o frontend
         raise HTTPException(status_code=500, detail=f"Erro interno no servidor. Verifique o console do backend.")
+
+# ==============================================================================
+# NOVOS ENDPOINTS PARA GERAR PDF
+# ==============================================================================
+@app.get("/ministerios/{id_ministerio}/escala/{ano}/{mes}/pdf", tags=["Escala"])
+def get_escala_pdf(id_ministerio: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
+    if current_user["id_ministerio"] != id_ministerio:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado")
+
+    escala_df = get_escala_completa(ano, mes, id_ministerio)
+    servicos_df = view_all_servicos_fixos(id_ministerio)
+    
+    meses_pt = { 1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+    7: "Julho", 8: "Agosto", 9: "Setembro",10: "Outubro", 11: "Novembro", 12: "Dezembro" }
+    mes_ano_str = f"{meses_pt.get(mes, '')} de {ano}"
+    
+    pdf_buffer = gerar_pdf_escala(escala_df, mes_ano_str, servicos_df)
+    
+    return StreamingResponse(pdf_buffer, media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename=escala_{ano}_{mes}.pdf"
+    })
+
+
+@app.get("/ministerios/{id_ministerio}/dashboard", tags=["Dashboard"])
+def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_current_user)):
+    if current_user["id_ministerio"] != id_ministerio:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado")
+
+    # Reutiliza suas funções existentes do database.py
+    voluntarios_df = get_all_voluntarios_com_detalhes(id_ministerio)
+    grupos_df = get_all_grupos_com_membros(id_ministerio)
+    funcoes_df = view_all_funcoes(id_ministerio)
+    eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
+    cotas_df = get_cotas_all_servicos()
+    
+    # Busca todos os voluntários (incluindo inativos) para a outra métrica
+    todos_voluntarios_com_inativos_df = view_all_voluntarios(id_ministerio, include_inactive=True)
+    voluntarios_inativos = todos_voluntarios_com_inativos_df[todos_voluntarios_com_inativos_df['ativo'] == False]
+
+    # --- LÓGICA ADICIONADA AQUI ---
+    # Encontra voluntários ativos sem nenhuma função
+    voluntarios_sem_funcao_df = voluntarios_df[voluntarios_df['funcoes'].apply(lambda x: not x)]
+    lista_voluntarios_sem_funcao = voluntarios_sem_funcao_df['nome_voluntario'].tolist()
+    
+    # Encontra voluntários ativos sem disponibilidade
+    voluntarios_sem_disponibilidade_df = voluntarios_df[voluntarios_df['disponibilidade'].apply(lambda x: not x)]
+    lista_voluntarios_sem_disponibilidade = voluntarios_sem_disponibilidade_df['nome_voluntario'].tolist()
+
+
+    total_vagas_mes = 0
+    if not eventos_mes_atual_df.empty:
+        for _, evento in eventos_mes_atual_df.iterrows():
+            total_vagas_mes += cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]['quantidade_necessaria'].sum()
+
+    niveis_contagem = {}
+    if not voluntarios_df.empty:
+        niveis_contagem = voluntarios_df['nivel_experiencia'].value_counts().to_dict()
+        
+    contagem_funcoes = {}
+    if not voluntarios_df.empty and not funcoes_df.empty:
+        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
+        contagem = defaultdict(int)
+        for funcoes_lista in voluntarios_df['funcoes']:
+            if funcoes_lista:
+                for id_funcao in funcoes_lista:
+                    nome_funcao = funcoes_map.get(id_funcao)
+                    if nome_funcao:
+                        contagem[nome_funcao] += 1
+        contagem_funcoes = dict(contagem)
+
+
+    return {
+        "kpis": {
+            "voluntarios_ativos": len(voluntarios_df),
+            "grupos": len(grupos_df),
+            "eventos_mes": len(eventos_mes_atual_df),
+            "vagas_mes": int(total_vagas_mes)
+        },
+        "grafico_niveis": niveis_contagem,
+        "grafico_funcoes": contagem_funcoes,
+        "pontos_atencao": {
+            "voluntarios_inativos": voluntarios_inativos['nome_voluntario'].tolist(),
+            "voluntarios_sem_funcao": lista_voluntarios_sem_funcao,
+            "voluntarios_sem_disponibilidade": lista_voluntarios_sem_disponibilidade
+        }
+    }

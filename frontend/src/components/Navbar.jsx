@@ -7,6 +7,7 @@ function Navbar() {
       <div className="nav-container">
         <span className="nav-logo">Escala Connect</span>
         <div className="nav-links">
+          <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/escala">Gerar Escala</NavLink>
           <NavLink to="/funcoes">Gerenciar Funções</NavLink>
           <NavLink to="/servicos">Gerenciar Serviços</NavLink>

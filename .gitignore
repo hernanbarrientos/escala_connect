@@ -1,7 +1,71 @@
-# Arquivo de segredos do Streamlit
-.streamlit/secrets.toml
 
-./criar_primeiro_admin.py
+
+# Arquivos de segredos do Streamlit
+.streamlit/secrets.toml
+.streamlit/pre-cache/
+
+# Scripts locais que não devem ir pro repositório
+criar_primeiro_admin.py
+
+# Ambientes virtuais
+venv/
+*.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Arquivos de ambiente/senhas
+.env
+*.env
+
+# Cache e compilados do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+
+# Build / distribuição
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testes / coverage
+.coverage
+*.cover
+*.log
+.cache/
+.pytest_cache/
+.tox/
+.nox/
+
+# Jupyter / IPython
+.ipynb_checkpoints
+*.ipynb
+
+# Configurações de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
 
 # Arquivos de ambiente virtual do Python
 venv/

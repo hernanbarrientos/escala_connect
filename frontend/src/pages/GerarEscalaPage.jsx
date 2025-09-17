@@ -44,6 +44,29 @@ function GerarEscalaPage() {
         }
     };
 
+    const handleDownloadPdf = async () => {
+        try {
+            const idMinisterio = 1; // Do contexto
+            const response = await api.get(
+                `/ministerios/${idMinisterio}/escala/${selectedAno}/${selectedMes}/pdf`,
+                { responseType: 'blob' } // Importante: diz ao axios para tratar a resposta como um arquivo
+            );
+            
+            // Cria um link temporário para o download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `escala_${selectedAno}_${selectedMes}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+
+        } catch (error) {
+            setError("Falha ao gerar o PDF.");
+        }
+    };
+
+
     const handleGerarEscala = async () => {
         if (!window.confirm(`Tem certeza que deseja gerar uma nova escala para ${meses[selectedMes]}/${selectedAno}? A escala atual (se existir) será apagada.`)) {
             return;
@@ -237,6 +260,15 @@ function GerarEscalaPage() {
                 </select>
                 <button onClick={handleGerarEscala} disabled={loading || generating} className="add-btn">
                     {generating ? 'Gerando...' : 'Gerar Escala Automática'}
+                </button>
+                {/* --- BOTÃO DE PDF ADICIONADO AQUI --- */}
+                <button 
+                    onClick={handleDownloadPdf} 
+                    disabled={escala.length === 0 || loading || generating} 
+                    className="add-btn" 
+                    style={{backgroundColor: '#6c757d'}} // Um cinza para diferenciar
+                >
+                    Baixar PDF
                 </button>
             </div>
             {renderContent()}
