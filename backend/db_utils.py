@@ -7,29 +7,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # --- LÓGICA DE CONEXÃO UNIVERSAL E PURA ---
 _db_credentials = None
 
-def get_db_credentials():
-    """Lê as credenciais do secrets.toml uma vez e as armazena em cache."""
-    global _db_credentials
-    if _db_credentials is None:
-        try:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            secrets_path = os.path.join(base_dir, ".streamlit", "secrets.toml")
-            secrets = toml.load(secrets_path)
-            _db_credentials = secrets["postgres"]
-        except Exception as e:
-            print(f"ERRO CRÍTICO: Não foi possível carregar as credenciais do banco de dados de '{secrets_path}'. Erro: {e}")
-    return _db_credentials
-
 def ensure_connection():
-    """Garante uma conexão funcional com o banco de dados."""
-    credentials = get_db_credentials()
-    if not credentials:
-        return None
+    """
+    Cria uma conexão com o banco de dados usando a variável de ambiente DATABASE_URL.
+    Funciona tanto localmente (se você criar um .env) quanto na produção (Render).
+    """
     try:
-        # Garante que sslmode está presente para o Supabase Pooler
-        if 'sslmode' not in credentials:
-            credentials['sslmode'] = 'require'
-        return psycopg2.connect(**credentials)
+        # Pega a string de conexão do ambiente.
+        db_url = os.environ.get('DATABASE_URL')
+        
+        if not db_url:
+            print("ERRO CRÍTICO: A variável de ambiente DATABASE_URL não foi definida.")
+            return None
+            
+        return psycopg2.connect(db_url)
+        
     except Exception as e:
         print(f"ERRO DE CONEXÃO: {e}")
         return None

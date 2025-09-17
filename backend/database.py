@@ -42,13 +42,23 @@ def get_db_credentials():
     return None
 
 def ensure_connection():
-    credentials = get_db_credentials()
-    if credentials:
-        try:
-            return psycopg2.connect(**credentials)
-        except Exception as e:
-            print(f"ERRO DE CONEXÃO: {e}")
-    return None
+    """
+    Cria uma conexão com o banco de dados usando a variável de ambiente DATABASE_URL.
+    Funciona tanto localmente (se você criar um .env) quanto na produção (Render).
+    """
+    try:
+        # Pega a string de conexão do ambiente.
+        db_url = os.environ.get('DATABASE_URL')
+        
+        if not db_url:
+            print("ERRO CRÍTICO: A variável de ambiente DATABASE_URL não foi definida.")
+            return None
+            
+        return psycopg2.connect(db_url)
+        
+    except Exception as e:
+        print(f"ERRO DE CONEXÃO: {e}")
+        return None
 
 
 # --- CORREÇÃO FINAL EM verificar_login ---

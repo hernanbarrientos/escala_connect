@@ -9,6 +9,7 @@ from typing import Dict, List
 import numpy as np
 from datetime import datetime
 from collections import defaultdict
+from backend.db_utils import verificar_login_puro
 
 from backend.database import (
     add_funcao,
@@ -40,7 +41,8 @@ from backend.database import (
     update_grupo,
     update_servico_fixo,
     update_voluntario,
-    verificar_login, # <-- Sua função de login
+    verificar_login,
+    # <-- Sua função de login
     view_all_funcoes,
     view_all_servicos_fixos,
     view_all_voluntarios,
