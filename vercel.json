@@ -6,9 +6,6 @@
       "config": { "distDir": "frontend/dist" }
     }
   ],
-  "routes": [
-    { "src": "/(.*)", "dest": "frontend/dist/index.html" }
-  ],
   "rewrites": [
     {
       "source": "/(.*)",
