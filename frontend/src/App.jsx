@@ -8,6 +8,7 @@ import VoluntariosPage from './pages/VoluntariosPage';
 import VinculosPage from './pages/VinculosPage'; 
 import GerarEscalaPage from './pages/GerarEscalaPage';
 import DashboardPage from './pages/DashboardPage';
+import NotFoundPage from './pages/NotFoundPage';
 import './App.css';
 
 // --- MUDANÇA CRÍTICA AQUI ---
@@ -36,6 +37,8 @@ function App() {
           <Route path="/servicos" element={<PrivateRoute><ServicosPage /></PrivateRoute>} />
           <Route path="/voluntarios" element={<PrivateRoute><VoluntariosPage /></PrivateRoute>} />
           <Route path="/grupos" element={<PrivateRoute><VinculosPage /></PrivateRoute>} />
+          <Route path="*" element={<NotFoundPage />} />
+
         </Routes>
       </main>
     </>
