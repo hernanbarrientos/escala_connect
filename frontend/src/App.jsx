@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext'; // Importa nosso hook
 import Navbar from './components/Navbar';
 import LoginPage from './pages/LoginPage';
 import FuncoesPage from './pages/FuncoesPage';
@@ -15,11 +16,11 @@ function PrivateRoute({ children }) {
 }
 
 function App() {
-  const isLoggedIn = !!localStorage.getItem('accessToken');
+  const { isLoggedIn } = useAuth(); // Pega o estado de login do contexto
 
   return (
     <>
-    {isLoggedIn && <Navbar />}
+      {isLoggedIn && <Navbar />} {/* <-- A MÁGICA ACONTECE AQUI */}
       <main className="container">
         <Routes>
           <Route path="/login" element={<LoginPage />} />

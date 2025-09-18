@@ -47,3 +47,28 @@
   font-weight: 500;
   border-bottom-color: var(--primary-accent-color);
 }
+
+/* Estilos para a seção de ações e o botão de logout */
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+}
+
+.logout-btn {
+  background-color: #414351; /* Um cinza escuro sutil */
+  color: #f0f2f6;
+  border: 1px solid #5a5c6e;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.logout-btn:hover {
+  background-color: var(--danger-color); /* Vermelho ao passar o mouse */
+  color: white;
+  border-color: var(--danger-color);
+}

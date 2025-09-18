@@ -1,34 +1,21 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext'; // 1. Importa o hook useAuth
 import api from '../services/api';
-import './LoginPage.css'; // Criaremos este CSS
+import './LoginPage.css';
 
 function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const navigate = useNavigate();
+  const { login } = useAuth(); // 2. Pega a função de login do contexto
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     try {
-      // O FastAPI com OAuth2PasswordRequestForm espera os dados como FormData
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-
-      const response = await api.post('/token', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-
-      // Salva o token no localStorage
-      localStorage.setItem('accessToken', response.data.access_token);
-
-      // Redireciona para a página principal
-      navigate('/escala'); 
-      window.location.reload(); // Força o reload para o App detectar a mudança
-
+      // 3. Usa a função de login do contexto
+      // Ela já cuida de salvar o token, atualizar o estado e navegar
+      await login(username, password);
     } catch (err) {
       setError('Usuário ou senha inválidos.');
     }
