@@ -1,4 +1,30 @@
-# Arquivo: api.py (Versão com Indentação Corrigida)
+
+
+import os
+
+from dotenv import load_dotenv
+
+
+print("DEBUG: DATABASE_URL =", os.environ.get("DATABASE_URL"))
+# ==============================================================================
+# LÓGICA DE CARREGAMENTO DE AMBIENTE À PROVA DE FALHAS
+# ==============================================================================
+# 1. Encontra o caminho absoluto para a pasta 'backend' onde este arquivo está
+base_dir = os.path.dirname(os.path.abspath(__file__))
+# 2. "Sobe" um nível para chegar na pasta raiz do projeto (escala_connect)
+project_root = os.path.dirname(base_dir)
+# 3. Monta o caminho completo e correto para o arquivo .env
+dotenv_path = os.path.join(project_root, '.env')
+
+# 4. Se o arquivo .env for encontrado nesse caminho, carrega as variáveis dele
+if os.path.exists(dotenv_path):
+    print(f"INFO: Carregando variáveis de ambiente do arquivo: {dotenv_path}")
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+    
+else:
+    print(f"INFO: Arquivo .env não encontrado em '{dotenv_path}'. Usando variáveis de ambiente do sistema (ideal para produção).")
+# ==============================================================================
+
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,8 +75,9 @@ from backend.database import (
     get_all_voluntarios_com_detalhes_puro
 )
 from backend.auth import create_access_token, get_current_user, Token
-from dotenv import load_dotenv
-load_dotenv()
+
+
+
 
 
 
