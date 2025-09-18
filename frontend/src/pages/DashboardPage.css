@@ -74,6 +74,7 @@
   padding: 1.5rem;
   border-radius: 8px;
 }
+
 .atencao-card h3 { margin-top: 0; }
 .atencao-card ul { padding-left: 20px; list-style-position: inside; }
 .atencao-card li { margin-bottom: 0.5rem; }
@@ -82,19 +83,44 @@
   border-radius: 6px;
   margin-bottom: 1rem;
 }
-.warning-box { background-color: rgba(236, 152, 0, 0.15); color: #ec9800; border: 1px solid #ec9800; }
-.success-box { background-color: rgba(32, 201, 151, 0.1); color: #20c997; border: 1px solid #20c997; }
-.error-box { background-color: rgba(255, 75, 75, 0.1); color: var(--danger-color); border: 1px solid var(--danger-color); }
+.warning-box { margin-top:1rem; background-color:  rgba(236, 152, 0, 0.15); color: #ec9800; border: 1px solid #ec9800; }
+.success-box {margin-top:1rem; background-color: rgba(32, 201, 151, 0.1); color: #20c997; border: 1px solid #20c997; }
+.error-box { margin-top:1rem; background-color: rgba(255, 75, 75, 0.1); color: var(--danger-color); border: 1px solid var(--danger-color); }
 
+
+/* --- ANIMAÇÃO PARA OS CARDS (KPIs e Pontos de Atenção) --- */
+.kpi-card, .atencao-card {
+  transition: all 0.3s ease-in-out; /* Define uma transição suave para todas as propriedades */
+  transform: translateY(0); /* Estado inicial da posição */
+}
+
+.kpi-card:hover, .atencao-card:hover {
+  transform: translateY(-5px); /* Move o card 5 pixels para cima */
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2); /* Adiciona uma sombra mais pronunciada */
+  border-color: rgba(160, 163, 189, 0.5); /* Destaca a borda */
+}
+
+
+/* --- BOTÃO "GERENCIAR VOLUNTÁRIOS" (MAIS ESTILIZADO) --- */
 .manage-btn {
   width: 100%;
-  margin-top: 1.5rem;
-  padding: 0.8rem;
-  background-color: #414351;
-  color: #f0f2f6;
-  border: 1px solid #5a5c6e;
-  border-radius: 6px;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--primary-accent-color);
+  color: white;
+  font-size: 1rem;
+  letter-spacing: 0.1rem;
+  font-weight: bold;
   cursor: pointer;
-  transition: background-color 0.2s;
+  margin-top: 1rem;
+  transition: all 0.2s ease;
+  opacity: 0.8; /* Deixa ele um pouco sutil no estado normal */
 }
-.manage-btn:hover { background-color: #5a5c6e; }
+
+.manage-btn:hover {
+  opacity: 1; /* Opacidade total ao passar o mouse */
+  background-color: #0055a4; /* Um tom de azul mais escuro no hover */
+  transform: translateY(-2px); /* Efeito de levantar sutil */
+  box-shadow: 0 4px 12px rgba(0, 104, 201, 0.2);
+}

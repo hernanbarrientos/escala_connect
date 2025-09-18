@@ -15,7 +15,7 @@ function Navbar() {
           <NavLink to="/funcoes">Funções</NavLink>
           <NavLink to="/servicos">Serviços</NavLink>
           <NavLink to="/voluntarios">Voluntários</NavLink>
-          <NavLink to="/vinculos">Vínculos</NavLink>
+          <NavLink to="/grupos">Grupos</NavLink>
         </div>
         
         <div className="nav-actions">

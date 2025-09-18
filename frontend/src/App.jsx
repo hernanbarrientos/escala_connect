@@ -35,7 +35,7 @@ function App() {
           <Route path="/funcoes" element={<PrivateRoute><FuncoesPage /></PrivateRoute>} />
           <Route path="/servicos" element={<PrivateRoute><ServicosPage /></PrivateRoute>} />
           <Route path="/voluntarios" element={<PrivateRoute><VoluntariosPage /></PrivateRoute>} />
-          <Route path="/vinculos" element={<PrivateRoute><VinculosPage /></PrivateRoute>} />
+          <Route path="/grupos" element={<PrivateRoute><VinculosPage /></PrivateRoute>} />
         </Routes>
       </main>
     </>
