@@ -14,53 +14,28 @@ import os
 import toml
 
 # --- LÓGICA DE CONEXÃO UNIVERSAL E PURA ---
-_db_credentials = None
 
-def get_db_credentials():
-    global _db_credentials
-    if _db_credentials: return _db_credentials
-    
-    # Caminho 1: Padrão para API (da raiz do projeto)
-    path1 = os.path.join("backend", "config", "secrets.toml")
-    # Caminho 2: Padrão para scripts dentro do backend
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    path2 = os.path.join(base_dir, "config", "secrets.toml")
-    
-    secrets_path = path1 if os.path.exists(path1) else path2
-    
-    if os.path.exists(secrets_path):
-        try:
-            secrets = toml.load(secrets_path)
-            _db_credentials = secrets.get("postgres")
-            if 'sslmode' not in _db_credentials:
-                _db_credentials['sslmode'] = 'require'
-            return _db_credentials
-        except Exception as e:
-            print(f"ERRO: Falha ao ler '{secrets_path}'. Causa: {e}")
-    
-    print(f"ERRO CRÍTICO: Arquivo de segredos 'secrets.toml' não encontrado.")
-    return None
 
 def ensure_connection():
     """
     Cria uma conexão com o banco de dados usando a variável de ambiente DATABASE_URL.
-    Funciona tanto localmente (se você criar um .env) quanto na produção (Render).
+    Funciona tanto localmente (lendo o .env) quanto na produção (Render).
     """
     try:
-        # Pega a string de conexão do ambiente.
+        # Pega a única string de conexão do ambiente.
         db_url = os.environ.get('DATABASE_URL')
         
         if not db_url:
             print("ERRO CRÍTICO: A variável de ambiente DATABASE_URL não foi definida.")
             return None
             
+        # Conecta usando a URL, que é o método mais robusto.
         return psycopg2.connect(db_url)
         
     except Exception as e:
         print(f"ERRO DE CONEXÃO: {e}")
         return None
-
-
+        
 # --- CORREÇÃO FINAL EM verificar_login ---
 def verificar_login(username, password):
     conn = ensure_connection()
