@@ -16,15 +16,20 @@ def ensure_connection():
         # Pega a única string de conexão do ambiente.
         db_url = os.environ.get('DATABASE_URL')
         
+        # =========== LOG DE DIAGNÓSTICO ===========
+        print("--- INICIANDO TENTATIVA DE CONEXÃO ---")
+        print(f"DATABASE_URL lida do ambiente: {db_url}")
+        # ==========================================
+
         if not db_url:
-            print("ERRO CRÍTICO: A variável de ambiente DATABASE_URL não foi definida.")
+            print("ERRO CRÍTICO: A variável de ambiente DATABASE_URL não foi definida ou não foi encontrada.")
             return None
             
         # Conecta usando a URL, que é o método mais robusto.
         return psycopg2.connect(db_url)
         
     except Exception as e:
-        print(f"ERRO DE CONEXÃO: {e}")
+        print(f"ERRO DE CONEXÃO AO TENTAR USAR A URL: {e}")
         return None
 
 # --- FUNÇÕES DE AUTENTICAÇÃO PURAS ---
