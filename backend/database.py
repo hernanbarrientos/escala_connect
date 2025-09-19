@@ -1571,4 +1571,47 @@ def atualizar_funcoes_do_voluntario(id_voluntario, nova_lista_de_ids_funcoes):
         if conn:
             conn.close()
 
+def get_voluntarios_elegiveis_para_vaga(id_funcao: int, id_evento: int, id_ministerio: int):
+    """
+    Busca voluntários elegíveis para uma vaga específica, considerando:
+    1. Função correta.
+    2. Disponibilidade para o evento (não marcado como indisponível).
+    3. Não estar escalado em outra função no mesmo dia do evento.
+    """
+    conn = ensure_connection()
+    if conn is None:
+        return pd.DataFrame()
+    try:
+        query = """
+        SELECT v.id_voluntario, v.nome_voluntario
+        FROM voluntarios v
+        -- 1. Garante que o voluntário PODE exercer a função
+        JOIN voluntario_funcoes vf ON v.id_voluntario = vf.id_voluntario
+        -- Subquery para pegar a data do evento alvo
+        CROSS JOIN (SELECT data_evento FROM eventos WHERE id_evento = %(id_evento)s) as evento_alvo
+        WHERE
+            v.ativo = TRUE
+            AND v.id_ministerio = %(id_ministerio)s
+            AND vf.id_funcao = %(id_funcao)s
+            -- 2. Garante que o voluntário NÃO está na lista de indisponibilidade para este evento
+            AND v.id_voluntario NOT IN (
+                SELECT id_voluntario FROM voluntario_indisponibilidade_datas
+                WHERE data_indisponivel = evento_alvo.data_evento
+            )
+            -- 3. Garante que o voluntário NÃO está escalado em NENHUM evento no mesmo dia
+            AND v.id_voluntario NOT IN (
+                SELECT e.id_voluntario
+                FROM escala e
+                JOIN eventos ev ON e.id_evento = ev.id_evento
+                WHERE ev.data_evento = evento_alvo.data_evento
+            )
+        ORDER BY v.nome_voluntario;
+        """
+        params = {'id_funcao': id_funcao, 'id_evento': id_evento, 'id_ministerio': id_ministerio}
+        df = pd.read_sql(query, conn, params=params)
+        return df
+    finally:
+        if conn:
+            conn.close()
+
             

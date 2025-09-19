@@ -74,7 +74,8 @@ from backend.database import (
     view_all_voluntarios,
     get_all_voluntarios_com_detalhes_puro,
     get_indisponibilidade_por_mes,
-    update_indisponibilidade_por_mes
+    update_indisponibilidade_por_mes,
+    get_voluntarios_elegiveis_para_vaga
 )
 
 
@@ -587,6 +588,14 @@ def update_vaga_na_escala(vaga: VagaUpdate):
         
         # Continua retornando o erro 500 para o frontend
         raise HTTPException(status_code=500, detail=f"Erro interno no servidor. Verifique o console do backend.")
+
+@app.get("/escala/vaga-elegiveis", tags=["Escala"])
+def get_voluntarios_elegiveis(id_funcao: int, id_evento: int, current_user: dict = Depends(get_current_user)):
+    """ Retorna uma lista de voluntários elegíveis para uma vaga específica. """
+    id_ministerio = current_user["id_ministerio"]
+    df = get_voluntarios_elegiveis_para_vaga(id_funcao, id_evento, id_ministerio)
+    return df.to_dict('records')
+
 
 # ==============================================================================
 # NOVOS ENDPOINTS PARA GERAR PDF

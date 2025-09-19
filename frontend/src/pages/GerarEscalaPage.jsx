@@ -112,11 +112,25 @@ function GerarEscalaPage() {
     const handleEditSlot = async (item) => {
         if (editingSlotKey) return;
         try {
-            const response = await api.get(`/funcoes/${item.id_funcao}/voluntarios`);
-            setAvailableVolunteers(response.data);
+            // ALTERAÇÃO: Chama o novo endpoint inteligente
+            const response = await api.get(`/escala/vaga-elegiveis`, {
+                params: {
+                    id_funcao: item.id_funcao,
+                    id_evento: item.id_evento
+                }
+            });
+
+            // Adiciona o voluntário atual à lista, caso ele precise ser re-selecionado
+            const currentVolunteerInList = response.data.some(v => v.id_voluntario === item.id_voluntario);
+            let finalVolunteerList = response.data;
+            if (item.id_voluntario && !currentVolunteerInList) {
+                finalVolunteerList.unshift({ id_voluntario: item.id_voluntario, nome_voluntario: item.nome_voluntario });
+            }
+            
+            setAvailableVolunteers(finalVolunteerList);
             setEditingSlotKey(getSlotKey(item));
         } catch (err) {
-            setError("Falha ao buscar voluntários para esta função.");
+            setError("Falha ao buscar voluntários elegíveis para esta vaga.");
         }
     };
 
