@@ -10,6 +10,7 @@ import '../styles/ManagementPage.css';
 import './VoluntariosPage.css';
 import Spinner from '../components/Spinner';
 
+
 function VoluntariosPage() {
   const [voluntarios, setVoluntarios] = useState([]);
   const [funcoes, setFuncoes] = useState([]);
