@@ -25,8 +25,7 @@ if __name__ == "__main__":
         print("⚠️ Variável DATABASE_URL não encontrada.")
 
     # Testa manualmente as duas portas (5432 e 6543) para comparar
-    db_url_direct = "postgresql://USUARIO:SENHA@aws-1-sa-east-1.supabase.com:5432/postgres"
-    db_url_pool = "postgresql://USUARIO:SENHA@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
+    db_url_pool = "postgresql://postgres.drorhwwmogftgasnvpow:BackkendPeewee123456@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
 
     test_connection(db_url_direct)
     test_connection(db_url_pool)
