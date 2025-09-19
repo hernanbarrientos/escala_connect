@@ -5,7 +5,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 
-def gerar_pdf_escala(escala_df, mes_ano_str, servicos_info_df):
+def gerar_pdf_escala(escala_df, mes_ano_str, servicos_df):
     """
     VERSÃO FINAL: Gera um PDF de PÁGINA ÚNICA com altura dinâmica e
     ordenação de serviços customizada (Domingo Manhã > Domingo Noite > Outros dias).
@@ -42,7 +42,7 @@ def gerar_pdf_escala(escala_df, mes_ano_str, servicos_info_df):
     # Define a ordem de prioridade explícita que você pediu
     ordem_prioridade_servicos = ["Domingo Manhã", "Domingo Noite"]
     
-    dia_da_semana_map = pd.Series(servicos_info_df.dia_da_semana.values, index=servicos_info_df.nome_servico).to_dict()
+    dia_da_semana_map = pd.Series(servicos_df.dia_da_semana.values, index=servicos_df.nome_servico).to_dict()
     servicos_na_escala = escala_df['nome_servico'].unique()
     
     # Nova chave de ordenação com dupla prioridade

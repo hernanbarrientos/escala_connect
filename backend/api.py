@@ -34,6 +34,7 @@ import numpy as np
 from datetime import datetime
 from collections import defaultdict
 from backend.db_utils import verificar_login_puro
+from backend.pdf_generator import gerar_pdf_escala
 
 from backend.database import (
     add_funcao,
