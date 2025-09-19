@@ -8,6 +8,7 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import '../styles/ManagementPage.css';
 import './VoluntariosPage.css';
+import Spinner from '../components/Spinner';
 
 function VoluntariosPage() {
   const [voluntarios, setVoluntarios] = useState([]);
@@ -183,7 +184,7 @@ function VoluntariosPage() {
   };
 
 
-  if (loading) return <p>Carregando...</p>;
+  if (loading) return <Spinner text="Carregando voluntários..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (

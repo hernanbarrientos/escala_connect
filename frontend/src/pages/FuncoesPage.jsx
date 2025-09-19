@@ -5,6 +5,7 @@ import api from '../services/api';
 import Modal from '../components/Modal';
 import FormFuncao from '../components/FormFuncao'; // Importa o novo formulário
 import '../styles/ManagementPage.css'; // Importa o novo CSS padrão
+import Spinner from '../components/Spinner';
 
 function FuncoesPage() {
   const [funcoes, setFuncoes] = useState([]);
@@ -75,7 +76,7 @@ function FuncoesPage() {
     setCurrentFuncao(null);
   };
 
-  if (loading) return <p>Carregando...</p>;
+  if (loading) return <Spinner text="Carregando voluntários..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (

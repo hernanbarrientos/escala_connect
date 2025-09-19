@@ -5,6 +5,7 @@ import api from '../services/api';
 import Modal from '../components/Modal';
 import FormVinculo from '../components/FormVinculo';
 import '../styles/ManagementPage.css';
+import Spinner from '../components/Spinner';
 
 function VinculosPage() {
   const [grupos, setGrupos] = useState([]);
@@ -87,7 +88,7 @@ function VinculosPage() {
       }
   };
 
-  if (loading) return <p>Carregando...</p>;
+  if (loading) return <Spinner text="Carregando voluntários..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (

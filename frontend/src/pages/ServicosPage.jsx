@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import FormServico from '../components/FormServico';
 import FormCotas from '../components/FormCotas';
 import '../styles/ManagementPage.css';
+import Spinner from '../components/Spinner';
 
 function ServicosPage() {
   // Estados para dados da página
@@ -110,7 +111,7 @@ function ServicosPage() {
 
   const diasSemana = { 0: "Domingo", 1: "Segunda-feira", 2: "Terça-feira", 3: "Quarta-feira", 4: "Quinta-feira", 5: "Sexta-feira", 6: "Sábado" };
 
-  if (loading) return <p>Carregando...</p>;
+  if (loading) return <Spinner text="Carregando voluntários..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (

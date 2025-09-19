@@ -1,23 +1,24 @@
 import { useState } from 'react';
-import { useAuth } from '../context/AuthContext'; // 1. Importa o hook useAuth
-import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import './LoginPage.css';
 
 function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login } = useAuth(); // 2. Pega a função de login do contexto
+  const [loading, setLoading] = useState(false); // 1. Adicionar state de loading
+  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setLoading(true); // 2. Ativar loading no início
     try {
-      // 3. Usa a função de login do contexto
-      // Ela já cuida de salvar o token, atualizar o estado e navegar
       await login(username, password);
     } catch (err) {
       setError('Usuário ou senha inválidos.');
+    } finally {
+      setLoading(false); // 3. Desativar loading no final (sucesso ou erro)
     }
   };
 
@@ -34,6 +35,7 @@ function LoginPage() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
+            disabled={loading} // 4. Desativar input durante o loading
           />
         </div>
         <div className="form-group">
@@ -44,9 +46,13 @@ function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            disabled={loading} // 5. Desativar input durante o loading
           />
         </div>
-        <button type="submit" className="btn-save">Entrar</button>
+        {/* 6. Alterar o botão para mostrar o estado de loading */}
+        <button type="submit" className="btn-save" disabled={loading}>
+          {loading ? 'Entrando...' : 'Entrar'}
+        </button>
       </form>
     </div>
   );
