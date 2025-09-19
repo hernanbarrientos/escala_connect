@@ -90,8 +90,14 @@
   font-size: 1rem;
 }
 .instrucao {
-  color: var(--secondary-text-color);
+  color: rgb(204, 55, 55);
   margin-bottom: 1rem;
+  margin-top: 0.5rem;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 17px;
+
+
 }
 .servicos-list {
   display: flex;

@@ -286,7 +286,7 @@ function VoluntariosPage() {
         {currentVoluntario && (
           <div className="indisponibilidade-container">
             <h3>Indisponibilidade no Mês</h3>
-            <p className="instrucao">Clique nos dias em que o voluntário NÃO poderá servir. A alteração é salva automaticamente.</p>
+            <p className="instrucao">Clique nos dias em que o voluntário <strong>NÃO</strong> poderá servir.<br /> A alteração é salva automaticamente.</p>
             <Calendar
               onChange={setSelectedDate} // Altera a data de visualização do calendário
               value={selectedDate}
