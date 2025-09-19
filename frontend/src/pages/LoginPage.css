@@ -3,7 +3,35 @@
   justify-content: center;
   align-items: center;
   width: 100%;
-  height: calc(100vh - 150px); /* Ajusta a altura para descontar o navbar e padding */
+  
+}
+
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+/* NOVO: Estilo para a imagem do logo */
+.login-logo {
+  width: 180px; /* Pode ajustar o tamanho conforme desejar */
+  height: auto;
+
+}
+
+/* Ajuste no título h2 existente */
+.login-form h2 {
+  text-align: center;
+  font-size: 2rem;
+  letter-spacing: 1px;
+}
+
+/* NOVO: Estilo para o subtítulo */
+.login-header p {
+  color: var(--secondary-text-color);
+  margin-top: 0;
+  font-size: 1rem;
 }
 
 .login-form {
@@ -16,20 +44,14 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
-.login-form h2 {
-  text-align: center;
-  margin-bottom: 2rem;
-  font-size: 1.8rem;
-}
-
 /* Reutilizando os estilos que já criamos para outros formulários */
 .login-form .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .login-form .form-group label {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-top: 0.5rem;
   font-weight: 500;
   color: var(--secondary-text-color);
 }
@@ -56,12 +78,13 @@
   border-radius: 8px;
   border: none;
   background-color: var(--primary-accent-color);
+  letter-spacing: 2px;
   color: white;
   font-size: 1rem;
   font-weight: bold;
   cursor: pointer;
-  margin-top: 1rem;
-  transition: background-color 0.2s;
+  margin-top: 1.5rem;
+  transition: background-color 0.15s;
 }
 
 .login-form .btn-save:hover {
