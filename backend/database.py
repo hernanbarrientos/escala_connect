@@ -699,6 +699,62 @@ def update_escala_entry(id_evento, id_funcao, id_voluntario, instancia):
     except Exception as e:
         conn.rollback(); print(f"Erro ao salvar alteração na escala: {e}")
 
+# -------------------- INDISPONIBILIDADE DOS VOLUNTARIOS --------------------
+
+# Adicione estas funções ao seu arquivo database.py
+
+def get_indisponibilidade_por_mes(id_voluntario, ano, mes):
+    """Busca as datas de indisponibilidade de um voluntário para um mês específico."""
+    conn = ensure_connection()
+    if conn is None: return []
+    try:
+        query = """
+            SELECT data_indisponivel FROM voluntario_indisponibilidade_datas
+            WHERE id_voluntario = %s 
+              AND EXTRACT(YEAR FROM data_indisponivel) = %s
+              AND EXTRACT(MONTH FROM data_indisponivel) = %s;
+        """
+        df = pd.read_sql(query, conn, params=(id_voluntario, ano, mes))
+        # Retorna a lista de datas no formato 'YYYY-MM-DD'
+        return [d.strftime('%Y-%m-%d') for d in df['data_indisponivel']]
+    except Exception as e:
+        print(f"Erro ao buscar indisponibilidades: {e}")
+        return []
+    finally:
+        if conn: conn.close()
+
+def update_indisponibilidade_por_mes(id_voluntario, ano, mes, lista_datas):
+    """
+    Atualiza as indisponibilidades de um voluntário para um mês.
+    Primeiro apaga as datas antigas do mês e depois insere as novas.
+    """
+    conn = ensure_connection()
+    if conn is None: return False
+    try:
+        with conn.cursor() as cur:
+            # 1. Limpa as indisponibilidades antigas apenas para o mês em questão
+            cur.execute("""
+                DELETE FROM voluntario_indisponibilidade_datas
+                WHERE id_voluntario = %s 
+                  AND EXTRACT(YEAR FROM data_indisponivel) = %s 
+                  AND EXTRACT(MONTH FROM data_indisponivel) = %s;
+            """, (id_voluntario, ano, mes))
+
+            # 2. Insere as novas datas, se houver alguma
+            if lista_datas:
+                dados_para_inserir = [(id_voluntario, data) for data in lista_datas]
+                sql_insert = "INSERT INTO voluntario_indisponibilidade_datas (id_voluntario, data_indisponivel) VALUES (%s, %s)"
+                cur.executemany(sql_insert, dados_para_inserir)
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro ao atualizar indisponibilidades: {e}")
+        return False
+    finally:
+        if conn: conn.close()
+
+
 def get_indisponibilidade_datas(id_voluntario, ano, mes):
     """ Busca as datas específicas em que um voluntário está indisponível em um mês. """
     conn = ensure_connection()

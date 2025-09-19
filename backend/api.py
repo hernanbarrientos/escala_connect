@@ -52,7 +52,8 @@ from backend.database import (
     get_cotas_for_servico,
     get_cotas_all_servicos, # <-- Adicionada
     get_disponibilidade_of_voluntario,
-    get_events_for_month, # <-- Adicionada
+    get_events_for_month,
+    create_events_for_month, # <-- Adicionada
     update_escala_entry,
     get_escala_completa,
     get_funcoes_of_voluntario,
@@ -70,7 +71,9 @@ from backend.database import (
     view_all_funcoes,
     view_all_servicos_fixos,
     view_all_voluntarios,
-    get_all_voluntarios_com_detalhes_puro
+    get_all_voluntarios_com_detalhes_puro,
+    get_indisponibilidade_por_mes,
+    update_indisponibilidade_por_mes
 )
 
 
@@ -254,6 +257,7 @@ class ServicoUpdate(BaseModel):
 class CotasUpdate(BaseModel):
     cotas: Dict[int, int]
 
+
 @app.get("/ministerios/{id_ministerio}/servicos", tags=["Serviços"])
 def get_servicos_por_ministerio(id_ministerio: int):
     df_servicos = view_all_servicos_fixos(id_ministerio)
@@ -351,6 +355,49 @@ def delete_voluntario_by_id(id_voluntario: int):
         if conn:
             conn.close()
 
+
+    # --- ENDPOINTS DE INDISPONIBILIDADE VOLUNTÁRIOS---
+
+class IndisponibilidadeUpdate(BaseModel):
+    datas: List[str] # Espera uma lista de strings no formato "YYYY-MM-DD"
+
+# NOVO ENDPOINT PARA A INTERFACE DE INDISPONIBILIDADE
+@app.get("/voluntarios/{id_voluntario}/eventos-disponiveis/{ano}/{mes}", tags=["Voluntários"])
+def get_eventos_disponiveis_para_voluntario(id_voluntario: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
+    """
+    Retorna os eventos do mês em que um voluntário poderia servir,
+    baseado na sua disponibilidade padrão.
+    """
+    # Busca a disponibilidade padrão do voluntário (ex: [1, 2] para Domingo Manhã/Noite)
+    servicos_disponiveis_ids = get_disponibilidade_of_voluntario(id_voluntario)
+    
+    # Busca todos os eventos do mês para o ministério
+    id_ministerio = current_user['id_ministerio']
+    eventos_do_mes_df = get_events_for_month(ano, mes, id_ministerio)
+
+    if eventos_do_mes_df.empty or not servicos_disponiveis_ids:
+        return []
+
+    # Filtra os eventos para mostrar apenas aqueles que correspondem à disponibilidade padrão
+    eventos_relevantes_df = eventos_do_mes_df[eventos_do_mes_df['id_servico_fixo'].isin(servicos_disponiveis_ids)]
+    
+    return eventos_relevantes_df.to_dict('records')
+
+
+@app.get("/voluntarios/{id_voluntario}/indisponibilidade/{ano}/{mes}", tags=["Voluntários"])
+def get_voluntario_indisponibilidade(id_voluntario: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
+    # Aqui você pode adicionar uma lógica para verificar se o admin logado
+    # pode ver a indisponibilidade deste voluntário, se necessário.
+    datas = get_indisponibilidade_por_mes(id_voluntario, ano, mes)
+    return datas
+
+@app.put("/voluntarios/{id_voluntario}/indisponibilidade/{ano}/{mes}", tags=["Voluntários"])
+def update_voluntario_indisponibilidade(id_voluntario: int, ano: int, mes: int, data: IndisponibilidadeUpdate, current_user: dict = Depends(get_current_user)):
+    sucesso = update_indisponibilidade_por_mes(id_voluntario, ano, mes, data.datas)
+    if not sucesso:
+        raise HTTPException(status_code=500, detail="Falha ao salvar indisponibilidades no banco de dados.")
+    return {"status": "success", "message": "Indisponibilidades atualizadas com sucesso."}
+
 # --- Endpoints de Vínculos (Grupos) ---
 class GrupoBase(BaseModel):
     nome_grupo: str
@@ -419,25 +466,41 @@ def delete_grupo_by_id(id_grupo: int):
 # NOVOS ENDPOINTS PARA GERAR E VISUALIZAR A ESCALA
 # ==============================================================================
 
+# # --- Modelo Pydantic para a requisição ---
+# class EscalaRequest(BaseModel):
+#     ano: int
+#     mes: int
+
+# # --- Endpoints ---
+
+
+
 # --- Modelo Pydantic para a requisição ---
 class EscalaRequest(BaseModel):
     ano: int
     mes: int
 
-# --- Endpoints ---
 
-@app.post("/ministerios/{id_ministerio}/escala/gerar", tags=["Escala"])
-def endpoint_gerar_escala(id_ministerio: int, request_data: EscalaRequest):
-    """
-    Aciona o algoritmo para gerar a escala para um mês e ano específicos.
-    """
-    try:
-        # Reutiliza o nosso algoritmo principal do database.py
-        gerar_escala_automatica(request_data.ano, request_data.mes, id_ministerio)
-        return {"status": "success", "message": "Escala gerada com sucesso!"}
-    except Exception as e:
-        # Em uma aplicação real, seria bom logar o erro 'e'
-        raise HTTPException(status_code=500, detail="Ocorreu um erro interno ao gerar a escala.")
+@app.post("/ministerios/{id_ministerio}/eventos/criar", tags=["Eventos"])
+def endpoint_criar_eventos(
+    id_ministerio: int,
+    request_data: EscalaRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["id_ministerio"] != id_ministerio:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado")
+
+    # Chama a função do database.py que você já tinha no projeto antigo
+    sucesso = create_events_for_month(request_data.ano, request_data.mes, id_ministerio)
+    
+    if sucesso:
+        return {
+            "status": "success",
+            "message": f"Eventos para {request_data.mes}/{request_data.ano} criados com sucesso!"
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Falha ao criar os eventos. Verifique os logs do backend.")
+
 
 @app.get("/ministerios/{id_ministerio}/escala/{ano}/{mes}", tags=["Escala"])
 def endpoint_get_escala(id_ministerio: int, ano: int, mes: int):
@@ -446,11 +509,28 @@ def endpoint_get_escala(id_ministerio: int, ano: int, mes: int):
     """
     escala_df = get_escala_completa(ano, mes, id_ministerio)
     if escala_df.empty:
-        return [] # Retorna lista vazia se não houver escala
+        return []  # Retorna lista vazia se não houver escala
     
     # Substitui valores NaN por None para compatibilidade com JSON
     df_processado = escala_df.replace({np.nan: None})
-    return df_processado.to_dict('records')
+    return df_processado.to_dict("records")
+
+
+@app.post("/ministerios/{id_ministerio}/escala/gerar", tags=["Escala"])
+def endpoint_gerar_escala(
+    id_ministerio: int,
+    request_data: EscalaRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["id_ministerio"] != id_ministerio:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado")
+
+    try:
+        gerar_escala_automatica(request_data.ano, request_data.mes, id_ministerio)
+        return {"status": "success", "message": "Escala gerada com sucesso!"}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Ocorreu um erro interno ao gerar a escala.")
+
 
 # --- NOVO: Modelo Pydantic para a atualização da vaga ---
 class VagaUpdate(BaseModel):

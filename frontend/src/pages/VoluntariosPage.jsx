@@ -4,7 +4,13 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import Modal from '../components/Modal';
 import FormVoluntario from '../components/FormVoluntario';
+import Calendar from 'react-calendar'; // <-- Importa o calendário
+import FormIndisponibilidade from '../components/FormIndisponibilidade';
+import 'react-calendar/dist/Calendar.css'; // Estilo base do calendário
 import '../styles/ManagementPage.css';
+import './VoluntariosPage.css'; // Importa nosso novo estilo
+
+const meses = { 1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro" };
 
 function VoluntariosPage() {
   // Estados para os dados principais da página
@@ -26,6 +32,10 @@ function VoluntariosPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showInactive, setShowInactive] = useState(false);
+
+  // --- NOVOS ESTADOS PARA INDISPONIBILIDADE ---
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [indisponibilidades, setIndisponibilidades] = useState(new Set());
 
   // Efeito que busca os dados iniciais quando a página carrega ou o filtro de inativos muda
   useEffect(() => {
@@ -52,6 +62,58 @@ function VoluntariosPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Função para buscar indisponibilidades quando um voluntário é selecionado
+  useEffect(() => {
+    const fetchIndisponibilidades = async () => {
+      if (currentVoluntario) {
+        try {
+          const ano = selectedDate.getFullYear();
+          const mes = selectedDate.getMonth() + 1;
+          const response = await api.get(`/voluntarios/${currentVoluntario.id_voluntario}/indisponibilidade/${ano}/${mes}`);
+          // Converte as strings "YYYY-MM-DD" em objetos Date para o calendário
+          const datas = response.data.map(d => new Date(d + 'T00:00:00'));
+          setIndisponibilidades(new Set(datas.map(d => d.toDateString())));
+        } catch (err) {
+          console.error("Falha ao buscar indisponibilidades", err);
+        }
+      } else {
+        setIndisponibilidades(new Set());
+      }
+    };
+    fetchIndisponibilidades();
+  }, [currentVoluntario, selectedDate]);
+
+  // Função para salvar as indisponibilidades
+  const handleUpdateIndisponibilidade = async (newDatesSet) => {
+    const ano = selectedDate.getFullYear();
+    const mes = selectedDate.getMonth() + 1;
+    // Converte os objetos Date de volta para strings "YYYY-MM-DD"
+    const datasParaEnviar = Array.from(newDatesSet).map(dateString => {
+        const d = new Date(dateString);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+
+    try {
+      await api.put(`/voluntarios/${currentVoluntario.id_voluntario}/indisponibilidade/${ano}/${mes}`, {
+        datas: datasParaEnviar
+      });
+      setIndisponibilidades(newDatesSet);
+    } catch(err) {
+      setError("Falha ao salvar indisponibilidades.");
+    }
+  };
+
+  const handleDateClick = (date) => {
+    const newSelection = new Set(indisponibilidades);
+    const dateString = date.toDateString();
+    if (newSelection.has(dateString)) {
+      newSelection.delete(dateString);
+    } else {
+      newSelection.add(dateString);
+    }
+    handleUpdateIndisponibilidade(newSelection);
   };
 
   // --- Funções Handler para as Ações de CRUD ---
@@ -209,6 +271,8 @@ function VoluntariosPage() {
           onSave={handleSaveVoluntario}
           onCancel={handleCloseFormModal}
         />
+        {currentVoluntario && <FormIndisponibilidade voluntario={currentVoluntario} />}
+        
       </Modal>
 
       {/* Modal de Confirmação para Inativar */}

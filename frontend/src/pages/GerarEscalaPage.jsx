@@ -17,6 +17,7 @@ function GerarEscalaPage() {
     const [voluntarios, setVoluntarios] = useState([]);
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [creatingEvents, setCreatingEvents] = useState(false); 
     const [error, setError] = useState(null);
     const [editingSlotKey, setEditingSlotKey] = useState(null);
     const [availableVolunteers, setAvailableVolunteers] = useState([]);
@@ -41,6 +42,27 @@ function GerarEscalaPage() {
             setEscala([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // --- NOVA FUNÇÃO PARA CRIAR EVENTOS ---
+    const handleCreateEvents = async () => {
+        if (!window.confirm(`Tem certeza que deseja criar os eventos para ${meses[selectedMes]}/${selectedAno}? Eventos existentes para este mês serão substituídos.`)) {
+            return;
+        }
+        setCreatingEvents(true);
+        setError(null);
+        try {
+            const idMinisterio = 1; // Virá do contexto de usuário
+            await api.post(`/ministerios/${idMinisterio}/eventos/criar`, {
+                ano: selectedAno,
+                mes: selectedMes,
+            });
+            alert('Eventos criados com sucesso! Você já pode definir as indisponibilidades.');
+        } catch (err) {
+            setError("Ocorreu um erro ao criar os eventos.");
+        } finally {
+            setCreatingEvents(false);
         }
     };
 
@@ -258,6 +280,10 @@ function GerarEscalaPage() {
                 <select value={selectedAno} onChange={(e) => setSelectedAno(Number(e.target.value))} disabled={generating}>
                     {anos.map(ano => <option key={ano} value={ano}>{ano}</option>)}
                 </select>
+                                {/* --- NOVO BOTÃO ADICIONADO AQUI --- */}
+                <button onClick={handleCreateEvents} disabled={loading || creatingEvents} className="add-btn" style={{backgroundColor: '#17a2b8'}}>
+                    {creatingEvents ? 'Criando...' : 'Criar Eventos do Mês'}
+                </button>
                 <button onClick={handleGerarEscala} disabled={loading || generating} className="add-btn">
                     {generating ? 'Gerando...' : 'Gerar Escala Automática'}
                 </button>
