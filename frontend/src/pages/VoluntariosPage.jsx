@@ -1,59 +1,48 @@
-// arquivo: frontend/src/pages/VoluntariosPage.jsx (Versão Final 100% Completa)
+// arquivo: frontend/src/pages/VoluntariosPage.jsx (CORRIGIDO)
 
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import Modal from '../components/Modal';
 import FormVoluntario from '../components/FormVoluntario';
-import Calendar from 'react-calendar'; // <-- Importa o calendário
-import FormIndisponibilidade from '../components/FormIndisponibilidade';
-import 'react-calendar/dist/Calendar.css'; // Estilo base do calendário
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
 import '../styles/ManagementPage.css';
-import './VoluntariosPage.css'; // Importa nosso novo estilo
-
-const meses = { 1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro" };
+import './VoluntariosPage.css';
 
 function VoluntariosPage() {
-  // Estados para os dados principais da página
   const [voluntarios, setVoluntarios] = useState([]);
   const [funcoes, setFuncoes] = useState([]);
   const [servicos, setServicos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Estados para controlar o Modal de formulário
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [currentVoluntario, setCurrentVoluntario] = useState(null);
 
-  // Estados para controlar o Modal de confirmação
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [volunteerToDelete, setVolunteerToDelete] = useState(null);
 
-  // Estados para a funcionalidade de Busca e Paginação
   const [searchTerm, setSearchTerm] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showInactive, setShowInactive] = useState(false);
 
-  // --- NOVOS ESTADOS PARA INDISPONIBILIDADE ---
+  // --- ESTADOS PARA INDISPONIBILIDADE (AGORA USADOS DENTRO DO MODAL) ---
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [indisponibilidades, setIndisponibilidades] = useState(new Set());
 
-  // Efeito que busca os dados iniciais quando a página carrega ou o filtro de inativos muda
   useEffect(() => {
     fetchInitialData();
   }, [showInactive]);
 
-  // Função principal para buscar todos os dados necessários para a página
   const fetchInitialData = async () => {
     try {
       setLoading(true);
-      const idMinisterio = 1; // Virá do login no futuro
-      
+      const idMinisterio = 1;
       const [resVoluntarios, resFuncoes, resServicos] = await Promise.all([
         api.get(`/ministerios/${idMinisterio}/voluntarios?inativos=${showInactive}`),
         api.get(`/ministerios/${idMinisterio}/funcoes`),
         api.get(`/ministerios/${idMinisterio}/servicos`)
       ]);
-      
       setVoluntarios(resVoluntarios.data);
       setFuncoes(resFuncoes.data);
       setServicos(resServicos.data);
@@ -63,33 +52,31 @@ function VoluntariosPage() {
       setLoading(false);
     }
   };
-
-  // Função para buscar indisponibilidades quando um voluntário é selecionado
+  
+  // Efeito para buscar indisponibilidades QUANDO O MODAL ABRE ou a data do calendário muda
   useEffect(() => {
     const fetchIndisponibilidades = async () => {
-      if (currentVoluntario) {
+      if (currentVoluntario && isFormModalOpen) { // Só busca se o modal estiver aberto
         try {
           const ano = selectedDate.getFullYear();
           const mes = selectedDate.getMonth() + 1;
           const response = await api.get(`/voluntarios/${currentVoluntario.id_voluntario}/indisponibilidade/${ano}/${mes}`);
-          // Converte as strings "YYYY-MM-DD" em objetos Date para o calendário
-          const datas = response.data.map(d => new Date(d + 'T00:00:00'));
-          setIndisponibilidades(new Set(datas.map(d => d.toDateString())));
+          const datasComoString = response.data.map(d => new Date(d + 'T00:00:00').toDateString());
+          setIndisponibilidades(new Set(datasComoString));
         } catch (err) {
           console.error("Falha ao buscar indisponibilidades", err);
+          setIndisponibilidades(new Set());
         }
-      } else {
-        setIndisponibilidades(new Set());
       }
     };
     fetchIndisponibilidades();
-  }, [currentVoluntario, selectedDate]);
+  }, [currentVoluntario, selectedDate, isFormModalOpen]); // Depende da abertura do modal
 
   // Função para salvar as indisponibilidades
   const handleUpdateIndisponibilidade = async (newDatesSet) => {
+    if (!currentVoluntario) return;
     const ano = selectedDate.getFullYear();
     const mes = selectedDate.getMonth() + 1;
-    // Converte os objetos Date de volta para strings "YYYY-MM-DD"
     const datasParaEnviar = Array.from(newDatesSet).map(dateString => {
         const d = new Date(dateString);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -99,12 +86,14 @@ function VoluntariosPage() {
       await api.put(`/voluntarios/${currentVoluntario.id_voluntario}/indisponibilidade/${ano}/${mes}`, {
         datas: datasParaEnviar
       });
+      // Atualiza o estado local para refletir a mudança imediatamente
       setIndisponibilidades(newDatesSet);
     } catch(err) {
       setError("Falha ao salvar indisponibilidades.");
     }
   };
-
+  
+  // Função chamada ao clicar em uma data no calendário
   const handleDateClick = (date) => {
     const newSelection = new Set(indisponibilidades);
     const dateString = date.toDateString();
@@ -113,13 +102,14 @@ function VoluntariosPage() {
     } else {
       newSelection.add(dateString);
     }
+    // Chama a função que envia os dados para a API
     handleUpdateIndisponibilidade(newSelection);
   };
 
-  // --- Funções Handler para as Ações de CRUD ---
-
   const handleOpenAddModal = () => {
     setCurrentVoluntario(null);
+    setSelectedDate(new Date()); // Reseta a data
+    setIndisponibilidades(new Set()); // Limpa as indisponibilidades
     setIsFormModalOpen(true);
   };
   
@@ -127,6 +117,7 @@ function VoluntariosPage() {
     try {
       const response = await api.get(`/voluntarios/${voluntario.id_voluntario}/detalhes`);
       setCurrentVoluntario(response.data);
+      setSelectedDate(new Date()); // Reseta a data para o mês atual ao abrir
       setIsFormModalOpen(true);
     } catch (err) {
       setError("Falha ao carregar detalhes do voluntário para edição.");
@@ -147,13 +138,12 @@ function VoluntariosPage() {
         await api.post(`/ministerios/${idMinisterio}/voluntarios`, voluntarioData);
       }
       handleCloseFormModal();
-      await fetchInitialData(); // Recarrega os dados após salvar
+      await fetchInitialData();
     } catch (err) {
-      setError("Falha ao salvar o voluntário. Verifique o console do backend para mais detalhes.");
+      setError("Falha ao salvar o voluntário.");
     }
   };
   
-  // Funções para controlar o modal de confirmação de inativação
   const openConfirmModal = (voluntario) => {
     setVolunteerToDelete(voluntario);
     setIsConfirmModalOpen(true);
@@ -166,33 +156,32 @@ function VoluntariosPage() {
   
   const handleConfirmDelete = async () => {
     if (!volunteerToDelete) return;
-
     const originalVolunteers = [...voluntarios];
-    
-    // Atualização Otimista: remove o voluntário da lista na tela imediatamente
     setVoluntarios(prev => prev.filter(v => v.id_voluntario !== volunteerToDelete.id_voluntario));
     closeConfirmModal();
-
     try {
-      // Em segundo plano, envia a requisição para a API
       await api.delete(`/voluntarios/${volunteerToDelete.id_voluntario}`);
-      // Se a API funcionou, ótimo. A tela já está atualizada.
-      // Opcional: recarregar dados para garantir consistência total.
       await fetchInitialData(); 
     } catch(err) {
-      // Se a API falhar, desfaz a alteração na tela e mostra um erro.
       setError("Falha ao inativar o voluntário. A alteração foi desfeita.");
-      setVoluntarios(originalVolunteers); // Restaura a lista original
+      setVoluntarios(originalVolunteers);
     }
   };
 
-
-  // Lógica para filtrar e paginar os voluntários que serão exibidos na tabela
   const filteredVoluntarios = voluntarios.filter(vol =>
     vol.nome_voluntario.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
   const displayedVoluntarios = itemsPerPage === -1 ? filteredVoluntarios : filteredVoluntarios.slice(0, itemsPerPage);
+  
+  // Função que estiliza os dias indisponíveis no calendário
+  const tileClassName = ({ date, view }) => {
+    if (view === 'month' && indisponibilidades.has(date.toDateString())) {
+      return 'indisponivel'; // Classe CSS para dias indisponíveis
+    }
+    return null;
+  };
+
 
   if (loading) return <p>Carregando...</p>;
   if (error) return <p className="error-message">{error}</p>;
@@ -258,7 +247,6 @@ function VoluntariosPage() {
         </tbody>
       </table>
 
-      {/* Modal do Formulário de Edição/Criação */}
       <Modal 
         isOpen={isFormModalOpen} 
         onClose={handleCloseFormModal}
@@ -271,16 +259,26 @@ function VoluntariosPage() {
           onSave={handleSaveVoluntario}
           onCancel={handleCloseFormModal}
         />
-        {currentVoluntario && <FormIndisponibilidade voluntario={currentVoluntario} />}
         
+        {/* --- LÓGICA DE INDISPONIBILIDADE CORRIGIDA E INTEGRADA AO MODAL --- */}
+        {currentVoluntario && (
+          <div className="indisponibilidade-container">
+            <h3>Indisponibilidade no Mês</h3>
+            <p className="instrucao">Clique nos dias em que o voluntário NÃO poderá servir. A alteração é salva automaticamente.</p>
+            <Calendar
+              onChange={setSelectedDate} // Altera a data de visualização do calendário
+              value={selectedDate}
+              onClickDay={handleDateClick} // Ação ao clicar em um dia
+              tileClassName={({ date, view }) => 
+                view === 'month' && indisponibilidades.has(date.toDateString()) ? 'react-calendar__tile--active' : null
+              }
+              onActiveStartDateChange={({ activeStartDate }) => setSelectedDate(activeStartDate)}
+            />
+          </div>
+        )}
       </Modal>
 
-      {/* Modal de Confirmação para Inativar */}
-      <Modal
-        isOpen={isConfirmModalOpen}
-        onClose={closeConfirmModal}
-        title="Confirmar Ação"
-      >
+      <Modal isOpen={isConfirmModalOpen} onClose={closeConfirmModal} title="Confirmar Ação">
         <div>
           <p>Você tem certeza que deseja <strong>INATIVAR</strong> o voluntário <strong>{volunteerToDelete?.nome_voluntario}</strong>?</p>
           <p>Ele não será mais incluído na geração automática de escalas.</p>
