@@ -21,8 +21,8 @@ if os.path.exists(dotenv_path):
 else:
     print(f"INFO: Arquivo .env não encontrado em '{dotenv_path}'. Usando variáveis de ambiente do sistema (ideal para produção no Render).")
 # ==============================================================================
-
-
+from fastapi.responses import StreamingResponse
+from backend.pdf_generator import gerar_pdf_escala
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -34,7 +34,7 @@ import numpy as np
 from datetime import datetime
 from collections import defaultdict
 from backend.db_utils import verificar_login_puro
-from backend.pdf_generator import gerar_pdf_escala
+
 
 from backend.database import (
     add_funcao,
