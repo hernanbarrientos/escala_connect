@@ -18,6 +18,9 @@ function VoluntariosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+// 1. NOVO STATE: Armazena o ID do voluntário que está a ser carregado
+  const [loadingVoluntarioId, setLoadingVoluntarioId] = useState(null);
+
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [currentVoluntario, setCurrentVoluntario] = useState(null);
 
@@ -115,14 +118,18 @@ function VoluntariosPage() {
     setIsFormModalOpen(true);
   };
   
+  // 2. MODIFICADO: A função handleOpenEditModal agora controla o estado de loading
   const handleOpenEditModal = async (voluntario) => {
+    setLoadingVoluntarioId(voluntario.id_voluntario); // Ativa o spinner para este ID
     try {
       const response = await api.get(`/voluntarios/${voluntario.id_voluntario}/detalhes`);
       setCurrentVoluntario(response.data);
-      setSelectedDate(new Date()); // Reseta a data para o mês atual ao abrir
+      setSelectedDate(new Date());
       setIsFormModalOpen(true);
     } catch (err) {
       setError("Falha ao carregar detalhes do voluntário para edição.");
+    } finally {
+      setLoadingVoluntarioId(null); // Desativa o spinner no final (sucesso ou erro)
     }
   };
 
@@ -241,7 +248,20 @@ function VoluntariosPage() {
               <td>{vol.limite_escalas_mes}</td>
               <td>{vol.ativo ? 'Ativo' : 'Inativo'}</td>
               <td className="actions">
-                <button onClick={() => handleOpenEditModal(vol)} className="action-btn edit-btn" title="Editar">✏️</button>
+                {/* 3. MODIFICADO: Lógica condicional no botão de editar */}
+                <button
+                  onClick={() => handleOpenEditModal(vol)}
+                  className="action-btn edit-btn"
+                  title="Editar"
+                  disabled={loadingVoluntarioId === vol.id_voluntario} // Desativa o botão durante o loading
+                >
+                  {loadingVoluntarioId === vol.id_voluntario ? (
+                    <div className="spinner-inline"></div> // Mostra o spinner se o ID corresponder
+                  ) : (
+                    '✏️' // Mostra o ícone de lápis caso contrário
+                  )}
+                </button>
+                {/* O botão de inativar permanece o mesmo */}
                 {vol.ativo && <button onClick={() => openConfirmModal(vol)} className="action-btn delete-btn" title="Inativar">🗑️</button>}
               </td>
             </tr>
