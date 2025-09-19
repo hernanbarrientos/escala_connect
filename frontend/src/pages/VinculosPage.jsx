@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import FormVinculo from '../components/FormVinculo';
 import '../styles/ManagementPage.css';
 import Spinner from '../components/Spinner';
+import ActionFeedbackModal from '../components/ActionFeedbackModal';
 
 function VinculosPage() {
   const [grupos, setGrupos] = useState([]);
@@ -15,6 +16,10 @@ function VinculosPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentVinculo, setCurrentVinculo] = useState(null);
+
+    // States para o modal de confirmação
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [grupoToDelete, setGrupoToDelete] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -77,18 +82,24 @@ function VinculosPage() {
     }
   };
   
-  const handleDeleteVinculo = async (id_grupo) => {
-      if (window.confirm("Tem certeza que deseja excluir este grupo? Os voluntários ficarão sem vínculo.")) {
-          try {
-              await api.delete(`/grupos/${id_grupo}`);
-              await fetchData();
-          } catch (err) {
-              setError("Falha ao excluir o vínculo.");
-          }
-      }
+// Função que abre o modal de confirmação
+  const handleDeleteClick = (grupo) => {
+    setGrupoToDelete(grupo);
+    setIsConfirmModalOpen(true);
+  };
+  
+  // Ação de exclusão
+  const handleDeleteVinculo = async () => {
+    if (!grupoToDelete) return;
+    try {
+      await api.delete(`/grupos/${grupoToDelete.id_grupo}`);
+    } catch (err) {
+      setError("Falha ao excluir o vínculo.");
+      throw err;
+    }
   };
 
-  if (loading) return <Spinner text="Carregando voluntários..." />;
+  if (loading) return <Spinner text="Carregando vínculos..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (
@@ -115,7 +126,7 @@ function VinculosPage() {
               <td>{grupo.limite_escalas_grupo}</td>
               <td className="actions">
                 <button onClick={() => handleOpenEditModal(grupo)} className="action-btn edit-btn" title="Editar">✏️</button>
-                <button onClick={() => handleDeleteVinculo(grupo.id_grupo)} className="action-btn delete-btn" title="Excluir">🗑️</button>
+                <button onClick={() => handleDeleteClick(grupo)} className="action-btn delete-btn" title="Excluir">🗑️</button>
               </td>
             </tr>
           ))}
@@ -130,6 +141,15 @@ function VinculosPage() {
             onCancel={handleCloseModal}
         />
       </Modal>
+
+      <ActionFeedbackModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        title="Confirmar Exclusão"
+        confirmationMessage={`Tem certeza que deseja excluir o grupo "${grupoToDelete?.nome_grupo}"? Os voluntários ficarão sem vínculo.`}
+        action={handleDeleteVinculo}
+        onSuccess={fetchData} // Recarrega os dados após o sucesso
+      />
     </div>
   );
 }

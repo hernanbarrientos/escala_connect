@@ -1,0 +1,69 @@
+/* arquivo: frontend/src/components/ActionFeedbackModal.css */
+
+.confirmation-message {
+  font-size: 1.1rem;
+  color: var(--secondary-text-color);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.btn-cancel, .btn-confirm {
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.btn-cancel {
+  background-color: #414351;
+  color: #f0f2f6;
+}
+
+.btn-confirm {
+  background-color: #28a745; /* Verde para confirmação */
+  color: white;
+}
+
+/* Estilos para a tela de resultado (Sucesso/Erro) */
+.result-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 0;
+}
+
+.result-view p {
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.result-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  color: white;
+}
+
+.result-icon.success {
+  background-color: rgba(40, 167, 69, 0.2);
+  border: 3px solid #28a745;
+}
+
+.result-icon.error {
+  background-color: rgba(255, 75, 75, 0.2);
+  border: 3px solid var(--danger-color);
+}

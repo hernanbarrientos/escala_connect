@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import Spinner from '../components/Spinner';
+import ActionFeedbackModal from '../components/ActionFeedbackModal';
 import '../styles/ManagementPage.css';
 import './GerarEscalaPage.css';
 
@@ -21,6 +22,9 @@ function GerarEscalaPage() {
     const [error, setError] = useState(null);
     const [editingSlotKey, setEditingSlotKey] = useState(null);
     const [availableVolunteers, setAvailableVolunteers] = useState([]);
+        // States para os modais de confirmação
+    const [actionToConfirm, setActionToConfirm] = useState(null); // 'createEvents' ou 'generateScale'
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -47,24 +51,62 @@ function GerarEscalaPage() {
 
     // --- NOVA FUNÇÃO PARA CRIAR EVENTOS ---
     const handleCreateEvents = async () => {
-        if (!window.confirm(`Tem certeza que deseja criar os eventos para ${meses[selectedMes]}/${selectedAno}? Eventos existentes para este mês serão substituídos.`)) {
-            return;
-        }
-        setCreatingEvents(true);
-        setError(null);
-        try {
-            const idMinisterio = 1; // Virá do contexto de usuário
-            await api.post(`/ministerios/${idMinisterio}/eventos/criar`, {
-                ano: selectedAno,
-                mes: selectedMes,
-            });
-            alert('Eventos criados com sucesso! Você já pode definir as indisponibilidades.');
-        } catch (err) {
-            setError("Ocorreu um erro ao criar os eventos.");
-        } finally {
-            setCreatingEvents(false);
-        }
+      try {
+        const idMinisterio = 1;
+        await api.post(`/ministerios/${idMinisterio}/eventos/criar`, {
+          ano: selectedAno,
+          mes: selectedMes,
+        });
+      } catch (err) {
+        setError("Ocorreu um erro ao criar os eventos.");
+        throw err;
+      }
     };
+
+    const handleGerarEscala = async () => {
+      try {
+        const idMinisterio = 1;
+        await api.post(`/ministerios/${idMinisterio}/escala/gerar`, {
+          ano: selectedAno,
+          mes: selectedMes,
+        });
+      } catch (err) {
+        setError("Ocorreu um erro ao gerar a escala.");
+        throw err;
+      }
+    };
+
+ 
+    // --- LÓGICA PARA ABRIR O MODAL CORRETO ---
+    const openConfirmModal = (actionType) => {
+        setActionToConfirm(actionType);
+        setIsConfirmModalOpen(true);
+    };
+
+    const getModalConfig = () => {
+        if (actionToConfirm === 'createEvents') {
+            return {
+                title: 'Confirmar Criação de Eventos',
+                message: `Tem certeza que deseja criar os eventos para ${meses[selectedMes]}/${selectedAno}? Eventos existentes para este mês serão substituídos.`,
+                action: handleCreateEvents,
+                onSuccess: () => {
+                    // Não precisa recarregar a página, apenas fecha o modal.
+                    // Opcional: mostrar um alerta de sucesso customizado aqui.
+                }
+            };
+        }
+        if (actionToConfirm === 'generateScale') {
+            return {
+                title: 'Confirmar Geração de Escala',
+                message: `Tem certeza que deseja gerar uma nova escala para ${meses[selectedMes]}/${selectedAno}? A escala atual (se existir) será apagada.`,
+                action: handleGerarEscala,
+                onSuccess: fetchData // Recarrega a escala após o sucesso
+            };
+        }
+        return {}; // Configuração padrão vazia
+    };
+
+    const modalConfig = getModalConfig();
 
     const handleDownloadPdf = async () => {
         try {
@@ -89,25 +131,25 @@ function GerarEscalaPage() {
     };
 
 
-    const handleGerarEscala = async () => {
-        if (!window.confirm(`Tem certeza que deseja gerar uma nova escala para ${meses[selectedMes]}/${selectedAno}? A escala atual (se existir) será apagada.`)) {
-            return;
-        }
-        setGenerating(true);
-        setError(null);
-        try {
-            const idMinisterio = 1;
-            await api.post(`/ministerios/${idMinisterio}/escala/gerar`, {
-                ano: selectedAno,
-                mes: selectedMes,
-            });
-            await fetchData();
-        } catch (err) {
-            setError("Ocorreu um erro ao gerar a escala.");
-        } finally {
-            setGenerating(false);
-        }
-    };
+    // const handleGerarEscala = async () => {
+    //     if (!window.confirm(`Tem certeza que deseja gerar uma nova escala para ${meses[selectedMes]}/${selectedAno}? A escala atual (se existir) será apagada.`)) {
+    //         return;
+    //     }
+    //     setGenerating(true);
+    //     setError(null);
+    //     try {
+    //         const idMinisterio = 1;
+    //         await api.post(`/ministerios/${idMinisterio}/escala/gerar`, {
+    //             ano: selectedAno,
+    //             mes: selectedMes,
+    //         });
+    //         await fetchData();
+    //     } catch (err) {
+    //         setError("Ocorreu um erro ao gerar a escala.");
+    //     } finally {
+    //         setGenerating(false);
+    //     }
+    // };
 
     const handleEditSlot = async (item) => {
         if (editingSlotKey) return;
@@ -294,24 +336,33 @@ function GerarEscalaPage() {
                 <select value={selectedAno} onChange={(e) => setSelectedAno(Number(e.target.value))} disabled={generating}>
                     {anos.map(ano => <option key={ano} value={ano}>{ano}</option>)}
                 </select>
-                                {/* --- NOVO BOTÃO ADICIONADO AQUI --- */}
-                <button onClick={handleCreateEvents} disabled={loading || creatingEvents} className="add-btn" style={{backgroundColor: '#17a2b8'}}>
-                    {creatingEvents ? 'Criando...' : 'Criar Eventos do Mês'}
+                {/* Botões agora abrem o modal de confirmação */}
+                <button onClick={() => openConfirmModal('createEvents')} disabled={loading} className="add-btn" style={{backgroundColor: '#17a2b8'}}>
+                    Criar Eventos do Mês
                 </button>
-                <button onClick={handleGerarEscala} disabled={loading || generating} className="add-btn">
-                    {generating ? 'Gerando...' : 'Gerar Escala Automática'}
+                <button onClick={() => openConfirmModal('generateScale')} disabled={loading} className="add-btn">
+                    Gerar Escala Automática
                 </button>
-                {/* --- BOTÃO DE PDF ADICIONADO AQUI --- */}
                 <button 
                     onClick={handleDownloadPdf} 
-                    disabled={escala.length === 0 || loading || generating} 
+                    disabled={escala.length === 0 || loading} 
                     className="add-btn" 
-                    style={{backgroundColor: '#6c757d'}} // Um cinza para diferenciar
+                    style={{backgroundColor: '#6c757d'}}
                 >
                     Baixar PDF
                 </button>
             </div>
             {renderContent()}
+
+            {/* Modal de confirmação genérico */}
+            <ActionFeedbackModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                title={modalConfig.title}
+                confirmationMessage={modalConfig.message}
+                action={modalConfig.action}
+                onSuccess={modalConfig.onSuccess}
+            />
         </div>
     );
 }

@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import FormFuncao from '../components/FormFuncao'; // Importa o novo formulário
 import '../styles/ManagementPage.css'; // Importa o novo CSS padrão
 import Spinner from '../components/Spinner';
+import ActionFeedbackModal from '../components/ActionFeedbackModal';
 
 function FuncoesPage() {
   const [funcoes, setFuncoes] = useState([]);
@@ -15,6 +16,9 @@ function FuncoesPage() {
   // Estados para controlar o modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentFuncao, setCurrentFuncao] = useState(null);
+
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [funcaoToDelete, setFuncaoToDelete] = useState(null);
 
   useEffect(() => {
     fetchFuncoes();
@@ -50,14 +54,19 @@ function FuncoesPage() {
     }
   };
 
-  const handleDeleteFuncao = async (id_funcao) => {
-    if (window.confirm("Tem certeza que deseja excluir esta função?")) {
-      try {
-        await api.delete(`/funcoes/${id_funcao}`);
-        await fetchFuncoes(); // Recarrega a lista
-      } catch (err) {
-        setError("Falha ao excluir a função.");
-      }
+  const handleDeleteClick = (funcao) => {
+    setFuncaoToDelete(funcao);
+    setIsConfirmModalOpen(true);
+  };
+
+  // Ação de exclusão que será passada para o modal
+  const handleDeleteFuncao = async () => {
+    if (!funcaoToDelete) return;
+    try {
+      await api.delete(`/funcoes/${funcaoToDelete.id_funcao}`);
+    } catch (err) {
+      setError("Falha ao excluir a função.");
+      throw err; // Re-lança o erro
     }
   };
 
@@ -76,7 +85,7 @@ function FuncoesPage() {
     setCurrentFuncao(null);
   };
 
-  if (loading) return <Spinner text="Carregando voluntários..." />;
+  if (loading) return <Spinner text="Carregando Funções..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (
@@ -108,7 +117,7 @@ function FuncoesPage() {
               <td>{funcao.prioridade_alocacao}</td>
               <td className="actions">
                 <button onClick={() => handleOpenEditModal(funcao)} className="action-btn edit-btn" title="Editar">✏️</button>
-                <button onClick={() => handleDeleteFuncao(funcao.id_funcao)} className="action-btn delete-btn" title="Excluir">🗑️</button>
+                <button onClick={() => handleDeleteClick(funcao)} className="action-btn delete-btn" title="Excluir">🗑️</button>
               </td>
             </tr>
           ))}
@@ -126,6 +135,15 @@ function FuncoesPage() {
           onCancel={handleCloseModal}
         />
       </Modal>
+
+      <ActionFeedbackModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        title="Confirmar Exclusão"
+        confirmationMessage={`Tem certeza que deseja excluir a função "${funcaoToDelete?.nome_funcao}"?`}
+        action={handleDeleteFuncao}
+        onSuccess={fetchFuncoes} // Recarrega os dados após o sucesso
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import FormServico from '../components/FormServico';
 import FormCotas from '../components/FormCotas';
 import '../styles/ManagementPage.css';
 import Spinner from '../components/Spinner';
+import ActionFeedbackModal from '../components/ActionFeedbackModal'
 
 function ServicosPage() {
   // Estados para dados da página
@@ -22,6 +23,10 @@ function ServicosPage() {
   // Estados para controlar o Modal de Cotas
   const [isCotasModalOpen, setIsCotasModalOpen] = useState(false);
   const [selectedServicoForCotas, setSelectedServicoForCotas] = useState(null);
+
+    // 2. States para controlar o modal de confirmação
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState(null);
 
   // Busca os dados iniciais (serviços e funções) quando a página carrega
   useEffect(() => {
@@ -78,16 +83,16 @@ function ServicosPage() {
     }
   };
 
-  const handleDeleteServico = async (id_servico) => {
-    if (window.confirm("Tem certeza que deseja excluir este serviço? Esta ação é irreversível.")) {
-      try {
-        await api.delete(`/servicos/${id_servico}`);
-        fetchInitialData(); // Recarrega a lista
-      } catch (err) {
-        setError("Falha ao excluir o serviço.");
-      }
-    }
-  };
+  // const handleDeleteServico = async (id_servico) => {
+  //   if (window.confirm("Tem certeza que deseja excluir este serviço? Esta ação é irreversível.")) {
+  //     try {
+  //       await api.delete(`/servicos/${id_servico}`);
+  //       fetchInitialData(); // Recarrega a lista
+  //     } catch (err) {
+  //       setError("Falha ao excluir o serviço.");
+  //     }
+  //   }
+  // };
 
   // --- Funções para controlar o Modal de Cotas ---
   const handleOpenCotasModal = (servico) => {
@@ -108,6 +113,26 @@ function ServicosPage() {
       setError("Falha ao salvar as cotas.");
     }
   };
+
+    // 3. Função que ABRE o modal de confirmação
+  const handleDeleteClick = (servico) => {
+    setServiceToDelete(servico);
+    setIsConfirmModalOpen(true);
+  };
+
+  // 4. A função de exclusão agora é assíncrona para ser usada pelo modal
+  const handleDeleteServico = async () => {
+    if (!serviceToDelete) return;
+    try {
+      await api.delete(`/servicos/${serviceToDelete.id_servico}`);
+    } catch (err) {
+      setError("Falha ao excluir o serviço.");
+      // Re-lança o erro para o modal saber que falhou
+      throw err;
+    }
+  };
+
+  
 
   const diasSemana = { 0: "Domingo", 1: "Segunda-feira", 2: "Terça-feira", 3: "Quarta-feira", 4: "Quinta-feira", 5: "Sexta-feira", 6: "Sábado" };
 
@@ -139,7 +164,7 @@ function ServicosPage() {
               <td className="actions">
                 <button onClick={() => handleOpenCotasModal(servico)} className="action-btn" title="Gerenciar Vagas/Cotas">📊</button>
                 <button onClick={() => handleOpenEditModal(servico)} className="action-btn edit-btn" title="Editar">✏️</button>
-                <button onClick={() => handleDeleteServico(servico.id_servico)} className="action-btn delete-btn" title="Excluir">🗑️</button>
+                <button onClick={() => handleDeleteClick(servico)} className="action-btn delete-btn" title="Excluir">🗑️</button>
               </td>
             </tr>
           ))}
@@ -172,6 +197,15 @@ function ServicosPage() {
           onCancel={handleCloseCotasModal}
         />
       </Modal>
+      
+      <ActionFeedbackModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        title="Confirmar Exclusão"
+        confirmationMessage={`Você tem certeza que deseja excluir o serviço "${serviceToDelete?.nome_servico}"? Esta ação é irreversível.`}
+        action={handleDeleteServico}
+        onSuccess={fetchInitialData} // Recarrega os dados da página após o sucesso
+      />
     </div>
   );
 }
