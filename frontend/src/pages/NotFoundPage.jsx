@@ -9,12 +9,12 @@ function NotFoundPage() {
     <div className="not-found-container">
       <div className="not-found-content">
         <img src={gifUrl} alt="Animação de pessoa perdida" className="not-found-gif" />
-        <h1>Oops! Essa página não existe</h1>
+        <h1>Salmos 119:29</h1>
         <p>
-          Se liga no manto!!!
+          "Vê se há em mim algum caminho mau, e guia-me pelo caminho eterno". 
         </p>
         <p>
-          É mistéééééééério 👀
+          Esse caminho que você veio, não existe 👀
         </p>
         <Link to="/dashboard" className="back-home-btn">
           Voltar para o Painel

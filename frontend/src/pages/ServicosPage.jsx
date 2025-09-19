@@ -136,7 +136,7 @@ function ServicosPage() {
 
   const diasSemana = { 0: "Domingo", 1: "Segunda-feira", 2: "Terça-feira", 3: "Quarta-feira", 4: "Quinta-feira", 5: "Sexta-feira", 6: "Sábado" };
 
-  if (loading) return <Spinner text="Carregando voluntários..." />;
+  if (loading) return <Spinner text="Carregando Serviços..." />;
   if (error) return <p className="error-message">{error}</p>;
 
   return (
