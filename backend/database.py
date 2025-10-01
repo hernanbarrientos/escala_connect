@@ -107,6 +107,7 @@ class EscalaEntry:
 @dataclass
 class Vaga:
     id_evento: int
+    id_servico_fixo: int
     data_evento_obj: object
     id_funcao: int
     funcao_instancia: int
@@ -121,6 +122,7 @@ class Voluntario:
     id_grupo: int
     funcoes: Set[int] = field(default_factory=set)
     disponibilidade: Set[int] = field(default_factory=set)
+    indisponibilidades: Set[int] = field(default_factory=set)
     escalas_neste_mes: int = 0
     dias_escalado: Set[object] = field(default_factory=set)
 
@@ -423,10 +425,9 @@ def get_indisponibilidade_eventos(id_voluntario, ano, mes):
 def update_indisponibilidade_eventos(id_voluntario, ano, mes, lista_ids_eventos):
     """ Atualiza os eventos de indisponibilidade, limpando os antigos do mês e inserindo os novos. """
     conn = ensure_connection()
-    if conn is None: return
+    if conn is None: return False
     try:
         with conn.cursor() as cur:
-            # Deleta as indisponibilidades antigas do mês/ano usando um JOIN com a tabela de eventos
             cur.execute("""
                 DELETE FROM voluntario_indisponibilidade_eventos
                 WHERE id_voluntario = %s AND id_evento IN (
@@ -442,9 +443,14 @@ def update_indisponibilidade_eventos(id_voluntario, ano, mes, lista_ids_eventos)
                     VALUES (%s, %s)
                 """, args)
         conn.commit()
+        return True
     except Exception as e:
         conn.rollback()
         print(f"Erro ao atualizar indisponibilidades: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 # ----- MINISTERIOS ------
 
@@ -907,290 +913,17 @@ def create_events_for_month(ano, mes, id_ministerio):
     except Exception as e:
         conn.rollback(); print(f"Erro ao criar eventos: {e}"); return False
 
-def get_escala_completa(ano, mes, id_ministerio):
-    conn = ensure_connection()
-    if conn is None: return pd.DataFrame()
-    # Query atualizada para garantir que apenas dados do ministério logado sejam retornados
-    query = """
-    SELECT 
-        esc.funcao_instancia, e.id_evento, e.data_evento, sf.nome_servico,
-        f.id_funcao, f.nome_funcao, v.id_voluntario, v.nome_voluntario
-    FROM escala esc
-    JOIN eventos e ON esc.id_evento = e.id_evento
-    JOIN servicos_fixos sf ON e.id_servico_fixo = sf.id_servico
-    JOIN funcoes f ON esc.id_funcao = f.id_funcao
-    JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
-    WHERE EXTRACT(YEAR FROM e.data_evento) = %s 
-      AND EXTRACT(MONTH FROM e.data_evento) = %s
-      AND sf.id_ministerio = %s
-    ORDER BY e.data_evento, f.id_funcao, esc.funcao_instancia;
-    """
-    return pd.read_sql(query, conn, params=(ano, mes, id_ministerio))
-
-# def gerar_escala_automatica(ano, mes, id_ministerio):
-#     print(f"\n--- INICIANDO GERAÇÃO DA ESCALA PARA {mes}/{ano} ---")
-
-#     # --- 1. SETUP INICIAL E CARGA DE DADOS ---
-#     apagar_escala_do_mes(ano, mes, id_ministerio)
-#     eventos = get_events_for_month(ano, mes, id_ministerio)
-#     if eventos.empty:
-#         
-#         return
-#     eventos['data_evento_obj'] = pd.to_datetime(eventos['data_evento']).dt.date
-    
-#     voluntarios_df = get_all_voluntarios_com_detalhes(id_ministerio)
-#     cotas = get_cotas_all_servicos()
-#     todas_funcoes = view_all_funcoes(id_ministerio)
-#     grupos_df = get_all_grupos_com_membros(id_ministerio)
-
-#     # Mapeamento de Funções
-#     id_funcoes = {nome: id for nome, id in zip(todas_funcoes['nome_funcao'].replace('Líder de Escala', 'Líder'), todas_funcoes['id_funcao'])}
-#     id_lider = id_funcoes.get('Líder')
-#     id_store = id_funcoes.get('Store')
-#     id_apoio = id_funcoes.get('Apoio')
-
-#     # Limites
-#     limites_grupo = {int(gid): int(lim) for gid, lim in grupos_df.set_index('id_grupo')['limite_escalas_grupo'].to_dict().items()}
-    
-#     # --- ESTRUTURAS DE DADOS CENTRAIS ---
-#     escala_final = []
-    
-#     # MUDANÇA CRÍTICA: Este DataFrame será a nossa única fonte da verdade sobre vagas abertas.
-#     # Ele será modificado e passado adiante a cada fase.
-#     vagas_abertas_df = pd.DataFrame([
-#         {
-#             'id_evento': ev['id_evento'], 
-#             'data_evento_obj': ev['data_evento_obj'], 
-#             'id_funcao': int(cota['id_funcao']), 
-#             'funcao_instancia': i
-#         }
-#         for _, ev in eventos.iterrows() 
-#         for _, cota in cotas[cotas['id_servico'] == ev['id_servico_fixo']].iterrows()
-#         for i in range(1, int(cota['quantidade_necessaria']) + 1)
-#         if cota['id_funcao'] in id_funcoes.values()
-#     ])
-#     vagas_abertas_df.reset_index(drop=True, inplace=True) # Garante índices únicos
-
-#     # Dicionário central para contar escalas de indivíduos e grupos
-#     contagem_escalas = {
-#         'individual': defaultdict(int),
-#         'grupo': defaultdict(int)
-#     }
-
-#     # --- FASE 1: ALOCAÇÃO DE GRUPOS (PRIORIDADE MÁXIMA) ---
-#     print("--- FASE 1: Alocando Grupos ---")
-    
-#     # Preparar dados dos grupos
-#     candidatos_grupo_ids = list(grupos_df['id_grupo'].unique())
-#     membros_por_grupo = voluntarios_df[voluntarios_df['id_grupo'].notna()].groupby('id_grupo')['id_voluntario'].apply(list).to_dict()
-    
-#     continuar_alocando = True
-#     while continuar_alocando:
-#         houve_alocacao_na_rodada = False
-#         random.shuffle(candidatos_grupo_ids)
-
-#         for id_grupo in candidatos_grupo_ids:
-#             # 1. Checar limite do grupo
-#             if contagem_escalas['grupo'][id_grupo] >= limites_grupo.get(id_grupo, 0):
-#                 continue
-
-#             membros_do_grupo = membros_por_grupo.get(id_grupo, [])
-#             if not membros_do_grupo:
-#                 continue
-
-#             # 2. Encontrar um dia/evento adequado para o grupo inteiro
-#             eventos_disponiveis = vagas_abertas_df['id_evento'].unique()
-#             random.shuffle(eventos_disponiveis) # Garante variedade na escolha do evento
-
-#             for id_evento_alvo in eventos_disponiveis:
-#                 # 3. Checar se *nenhum* membro do grupo já está escalado neste dia
-#                 data_evento_alvo = eventos[eventos['id_evento'] == id_evento_alvo]['data_evento_obj'].iloc[0]
-#                 ids_ja_no_dia = {e['id_voluntario'] for e in escala_final if e['data_evento_obj'] == data_evento_alvo}
-                
-#                 if any(membro_id in ids_ja_no_dia for membro_id in membros_do_grupo):
-#                     continue # Conflito, o grupo não pode neste dia. Tenta o próximo evento.
-
-#                 # 4. LÓGICA "TUDO OU NADA": Verificar se há vagas suficientes para o grupo no evento
-#                 vagas_no_evento = vagas_abertas_df[vagas_abertas_df['id_evento'] == id_evento_alvo]
-                
-#                 # O grupo precisa de 1 vaga principal (Líder/Store) e N-1 vagas de Apoio
-#                 vaga_principal = vagas_no_evento[vagas_no_evento['id_funcao'].isin([id_lider, id_store])].head(1)
-#                 vagas_apoio = vagas_no_evento[vagas_no_evento['id_funcao'] == id_apoio]
-
-#                 if not vaga_principal.empty and len(vagas_apoio) >= (len(membros_do_grupo) - 1):
-#                     # SUCESSO! Encontramos um lugar para o grupo.
-#                     # 5. Alocar o grupo
-                    
-#                     # Aloca o primeiro membro (representante) na vaga principal
-#                     lider_do_grupo = membros_do_grupo[0]
-#                     vaga_lider_obj = vaga_principal.iloc[0]
-#                     escala_final.append({
-#                         'id_evento': int(vaga_lider_obj['id_evento']),
-#                         'data_evento_obj': data_evento_alvo,
-#                         'id_funcao': int(vaga_lider_obj['id_funcao']),
-#                         'id_voluntario': int(lider_do_grupo),
-#                         'funcao_instancia': int(vaga_lider_obj['funcao_instancia'])
-#                     })
-#                     vagas_abertas_df.drop(vaga_lider_obj.name, inplace=True)
-#                     contagem_escalas['individual'][lider_do_grupo] += 1
-                    
-#                     # Aloca os outros membros nas vagas de apoio
-#                     outros_membros = membros_do_grupo[1:]
-#                     for i, membro_id in enumerate(outros_membros):
-#                         vaga_apoio_obj = vagas_apoio.iloc[i]
-#                         escala_final.append({
-#                             'id_evento': int(vaga_apoio_obj['id_evento']),
-#                             'data_evento_obj': data_evento_alvo,
-#                             'id_funcao': int(vaga_apoio_obj['id_funcao']),
-#                             'id_voluntario': int(membro_id),
-#                             'funcao_instancia': int(vaga_apoio_obj['funcao_instancia'])
-#                         })
-#                         vagas_abertas_df.drop(vaga_apoio_obj.name, inplace=True)
-#                         contagem_escalas['individual'][membro_id] += 1
-                    
-#                     contagem_escalas['grupo'][id_grupo] += 1
-#                     houve_alocacao_na_rodada = True
-#                     break # Sai do loop de eventos, pois o grupo já foi alocado nesta rodada.
-            
-#             if vagas_abertas_df.empty: break # Se acabaram as vagas, para tudo
-#         if not houve_alocacao_na_rodada or vagas_abertas_df.empty:
-#             continuar_alocando = False
 
 
-#     # --- FUNÇÃO AUXILIAR PARA ALOCAÇÃO INDIVIDUAL (FASES 2, 3, 4, 5) ---
-#     def alocar_individuais(candidatos_df, filtro_vagas_func, respeitar_limites=True):
-#         nonlocal vagas_abertas_df, escala_final, contagem_escalas
-        
-#         vagas_alvo_df = vagas_abertas_df[filtro_vagas_func(vagas_abertas_df)].copy()
-#         if vagas_alvo_df.empty:
-#             return
-
-#         continuar_alocando = True
-#         while continuar_alocando and not vagas_alvo_df.empty:
-#             houve_alocacao_na_rodada = False
-#             candidatos_rodada = candidatos_df.sample(frac=1)
-
-#             for _, candidato in candidatos_rodada.iterrows():
-#                 id_cand = candidato['id_voluntario']
-
-#                 if respeitar_limites and contagem_escalas['individual'][id_cand] >= candidato['limite_escalas_mes']:
-#                     continue
-                
-#                 # Acha dias em que o candidato já foi escalado
-#                 dias_ja_escalado = {e['data_evento_obj'] for e in escala_final if e['id_voluntario'] == id_cand}
-                
-#                 # Filtra vagas em dias que ele ainda não está
-#                 vagas_possiveis = vagas_alvo_df[~vagas_alvo_df['data_evento_obj'].isin(dias_ja_escalado)]
-#                 if vagas_possiveis.empty:
-#                     continue
-
-#                 # Prioriza o dia com menos gente (melhor balanceamento)
-#                 escalados_por_data = defaultdict(int)
-#                 for e in escala_final: escalados_por_data[e['data_evento_obj']] += 1
-                
-#                 vagas_possiveis['staff_no_dia'] = vagas_possiveis['data_evento_obj'].map(escalados_por_data)
-#                 vaga_ideal = vagas_possiveis.sort_values(by='staff_no_dia').iloc[0]
-
-#                 # Aloca o voluntário
-#                 escala_final.append({
-#                     'id_evento': int(vaga_ideal['id_evento']),
-#                     'data_evento_obj': vaga_ideal['data_evento_obj'],
-#                     'id_funcao': int(vaga_ideal['id_funcao']),
-#                     'id_voluntario': int(id_cand),
-#                     'funcao_instancia': int(vaga_ideal['funcao_instancia'])
-#                 })
-#                 contagem_escalas['individual'][id_cand] += 1
-                
-#                 # ATUALIZAÇÃO CRÍTICA DO ESTADO
-#                 vagas_abertas_df.drop(vaga_ideal.name, inplace=True)
-#                 vagas_alvo_df.drop(vaga_ideal.name, inplace=True)
-                
-#                 houve_alocacao_na_rodada = True
-#                 break # Próximo candidato
-
-#             if not houve_alocacao_na_rodada:
-#                 continuar_alocando = False
-    
-#     # --- EXECUÇÃO DAS FASES INDIVIDUAIS ---
-    
-#     # Preparar voluntários individuais
-#     voluntarios_individuais_df = voluntarios_df[voluntarios_df['id_grupo'].isnull()]
-
-#     # Fase 2: Líderes Individuais
-#     print("--- FASE 2: Alocando Líderes Individuais ---")
-#     candidatos_lider_df = voluntarios_individuais_df[voluntarios_individuais_df['funcoes'].apply(lambda f: id_lider in (f or []))]
-#     alocar_individuais(candidatos_lider_df, lambda df: df['id_funcao'] == id_lider)
-    
-#     # Fase 3: Store Individuais
-#     print("--- FASE 3: Alocando Store Individuais ---")
-#     candidatos_store_df = voluntarios_individuais_df[voluntarios_individuais_df['funcoes'].apply(lambda f: id_store in (f or []))]
-#     alocar_individuais(candidatos_store_df, lambda df: df['id_funcao'] == id_store)
-
-#     # Fase 4: Apoios Individuais por Nível (ORDEM CORRIGIDA)
-#     print("--- FASE 4: Alocando Apoios Individuais ---")
-#     filtro_apoio_func = lambda df: df['id_funcao'] == id_apoio
-    
-#     # 4.1: Nível Avançado
-#     print("  - Sub-fase: Nível Avançado")
-#     cand_avancado = voluntarios_individuais_df[
-#         (voluntarios_individuais_df['funcoes'].apply(lambda f: id_apoio in (f or []))) &
-#         (voluntarios_individuais_df['nivel_experiencia'] == "Avançado")
-#     ]
-#     if not cand_avancado.empty: alocar_individuais(cand_avancado, filtro_apoio_func)
-
-#     # 4.2: Nível Iniciante
-#     print("  - Sub-fase: Nível Iniciante")
-#     cand_iniciante = voluntarios_individuais_df[
-#         (voluntarios_individuais_df['funcoes'].apply(lambda f: id_apoio in (f or []))) &
-#         (voluntarios_individuais_df['nivel_experiencia'] == "Iniciante")
-#     ]
-#     if not cand_iniciante.empty: alocar_individuais(cand_iniciante, filtro_apoio_func)
-
-#     # 4.3: Nível Intermediário
-#     print("  - Sub-fase: Nível Intermediário")
-#     cand_intermediario = voluntarios_individuais_df[
-#         (voluntarios_individuais_df['funcoes'].apply(lambda f: id_apoio in (f or []))) &
-#         (voluntarios_individuais_df['nivel_experiencia'] == "Intermediário")
-#     ]
-#     if not cand_intermediario.empty: alocar_individuais(cand_intermediario, filtro_apoio_func)
-
-#     # Fase 5: Preenchimento Forçado
-#     if not vagas_abertas_df.empty:
-#         print(f"--- FASE 5: {len(vagas_abertas_df)} vagas restantes. Preenchimento forçado ignorando limites. ---")
-#         # Para o preenchimento forçado, qualquer voluntário pode preencher qualquer vaga restante
-#         alocar_individuais(voluntarios_df, lambda df: df.index.isin(vagas_abertas_df.index), respeitar_limites=False)
-    
-#     print("\n--- GERAÇÃO DA ESCALA CONCLUÍDA ---\n")
-
-#     # --- SALVAR NO BANCO ---
-#     if escala_final:
-#         # Remover a coluna auxiliar 'data_evento_obj' antes de salvar
-#         args = [
-#             (e['id_evento'], e['id_funcao'], e['id_voluntario'], e['funcao_instancia']) 
-#             for e in escala_final
-#         ]
-        
-#         conn = ensure_connection()
-#         try:
-#             with conn.cursor() as cur:
-#                 cur.executemany("INSERT INTO escala (id_evento, id_funcao, id_voluntario, funcao_instancia) VALUES (%s, %s, %s, %s)", args)
-#             conn.commit()
-#             
-#         except Exception as e:
-#             conn.rollback()
-#             print(f"Erro ao salvar escala: {e}")
-#         finally:
-#             if conn:
-#                 conn.close()
 
 # =========================================================================
 # Nova Função de Carregamento de Dados
 # Substitua sua antiga get_all_voluntarios_com_detalhes por esta
 # =========================================================================
-def carregar_dados_para_escala(id_ministerio):
+def carregar_dados_para_escala(id_ministerio, ano, mes):
     """
     Carrega todos os dados necessários do banco e os transforma em objetos Python,
-    eliminando problemas de tipo de dado do Pandas.
+    incluindo disponibilidades e indisponibilidades.
     """
     conn = ensure_connection()
     if conn is None: return {}, {}
@@ -1201,8 +934,23 @@ def carregar_dados_para_escala(id_ministerio):
         
         query_funcoes = "SELECT id_voluntario, id_funcao FROM voluntario_funcoes"
         funcoes_map_df = pd.read_sql(query_funcoes, conn)
-        
         funcoes_map = funcoes_map_df.groupby('id_voluntario')['id_funcao'].apply(set).to_dict()
+
+        query_disp = "SELECT id_voluntario, id_servico FROM voluntario_disponibilidade"
+        disp_map_df = pd.read_sql(query_disp, conn)
+        disp_map = disp_map_df.groupby('id_voluntario')['id_servico'].apply(set).to_dict()
+
+        # Busca indisponibilidades de eventos para o mês específico
+        query_indisp = """
+            SELECT vi.id_voluntario, vi.id_evento
+            FROM voluntario_indisponibilidade_eventos vi
+            JOIN eventos e ON vi.id_evento = e.id_evento
+            WHERE vi.id_voluntario IS NOT NULL
+              AND EXTRACT(YEAR FROM e.data_evento) = %s 
+              AND EXTRACT(MONTH FROM e.data_evento) = %s
+        """
+        indisp_map_df = pd.read_sql(query_indisp, conn, params=(ano, mes))
+        indisp_map = indisp_map_df.groupby('id_voluntario')['id_evento'].apply(set).to_dict()
 
         voluntarios_map = {}
         for _, row in voluntarios_raw.iterrows():
@@ -1213,10 +961,11 @@ def carregar_dados_para_escala(id_ministerio):
                 limite_escalas_mes=int(row['limite_escalas_mes']),
                 nivel_experiencia=str(row['nivel_experiencia']),
                 id_grupo=int(row['id_grupo']) if pd.notna(row['id_grupo']) else None,
-                funcoes=funcoes_map.get(vol_id, set())
+                funcoes=funcoes_map.get(vol_id, set()),
+                disponibilidade=disp_map.get(vol_id, set()),
+                indisponibilidades=indisp_map.get(vol_id, set())
             )
 
-        # Corrigido para usar o nome correto da tabela de grupos
         query_grupos = "SELECT * FROM grupos_vinculados WHERE id_ministerio = %s"
         grupos_raw = pd.read_sql(query_grupos, conn, params=(id_ministerio,))
         
@@ -1240,170 +989,226 @@ def carregar_dados_para_escala(id_ministerio):
     finally:
         if conn: conn.close()
 
-# =========================================================================
-# Função Principal de Geração de Escala (Versão Completa)
-# Substitua sua função gerar_escala_automatica inteira por esta
-# =========================================================================
-def gerar_escala_automatica(ano, mes, id_ministerio):
-    print(f"\n--- INICIANDO GERAÇÃO DA ESCALA PARA {mes}/{ano} [VERSÃO COMPLETA E CORRIGIDA] ---")
 
-    # --- 1. SETUP E CARGA DE DADOS COM OBJETOS ---
+
+
+def get_escala_completa(ano, mes, id_ministerio):
+    """
+    VERSÃO FINAL: Constrói a escala completa a partir de todas as vagas
+    definidas nas cotas e preenche com os voluntários alocados, corrigindo a consulta SQL.
+    """
+    conn = ensure_connection()
+    if conn is None: return pd.DataFrame()
+
+    try:
+        eventos_df = get_events_for_month(ano, mes, id_ministerio)
+        if eventos_df.empty: return pd.DataFrame()
+
+        cotas_df = get_cotas_all_servicos()
+        funcoes_df = view_all_funcoes(id_ministerio)
+        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
+
+        # CORREÇÃO: Adicionado 'esc.id_funcao' à consulta SQL
+        query_escala = """
+            SELECT esc.id_funcao, esc.funcao_instancia, e.id_evento, v.id_voluntario, v.nome_voluntario
+            FROM escala esc
+            JOIN eventos e ON esc.id_evento = e.id_evento
+            JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
+            WHERE EXTRACT(YEAR FROM e.data_evento) = %s 
+              AND EXTRACT(MONTH FROM e.data_evento) = %s
+              AND v.id_ministerio = %s
+        """
+        escala_preenchida_df = pd.read_sql(query_escala, conn, params=(ano, mes, id_ministerio))
+
+        escala_final = []
+        for _, evento in eventos_df.iterrows():
+            cotas_do_servico = cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]
+            for _, cota in cotas_do_servico.iterrows():
+                id_funcao = int(cota['id_funcao'])
+                if id_funcao not in funcoes_map: continue
+
+                for i in range(1, int(cota['quantidade_necessaria']) + 1):
+                    alocado = escala_preenchida_df[
+                        (escala_preenchida_df['id_evento'] == evento['id_evento']) &
+                        (escala_preenchida_df['id_funcao'] == id_funcao) &
+                        (escala_preenchida_df['funcao_instancia'] == i)
+                    ]
+                    
+                    vaga = {
+                        "funcao_instancia": i,
+                        "id_evento": int(evento['id_evento']),
+                        "data_evento": evento['data_evento'],
+                        "nome_servico": evento['nome_servico'],
+                        "id_funcao": id_funcao,
+                        "nome_funcao": funcoes_map[id_funcao],
+                        "id_voluntario": None,
+                        "nome_voluntario": None
+                    }
+
+                    if not alocado.empty:
+                        vaga["id_voluntario"] = int(alocado.iloc[0]['id_voluntario'])
+                        vaga["nome_voluntario"] = alocado.iloc[0]['nome_voluntario']
+                    
+                    escala_final.append(vaga)
+        
+        if not escala_final: return pd.DataFrame()
+        df_final = pd.DataFrame(escala_final)
+        df_final = df_final.sort_values(by=['data_evento', 'nome_servico', 'id_funcao', 'funcao_instancia'])
+        return df_final
+    finally:
+        if conn: conn.close()
+
+# arquivo: backend/database.py (SUBSTITUA A FUNÇÃO 'gerar_escala_automatica')
+
+# arquivo: backend/database.py (SUBSTITUA A FUNÇÃO 'gerar_escala_automatica' INTEIRA POR ESTE BLOCO)
+
+# arquivo: backend/database.py (SUBSTITUA A FUNÇÃO 'gerar_escala_automatica' INTEIRA POR ESTE BLOCO)
+
+# arquivo: backend/database.py (VERSÃO FINAL ROBUSTA)
+
+# arquivo: backend/database.py (VERSÃO FINAL DEFINITIVA)
+
+# arquivo: backend/database.py (VERSÃO FINAL COM CORREÇÃO DE EVENTO)
+
+# arquivo: backend/database.py (VERSÃO FINAL COM BALANCEAMENTO POR EVENTO)
+
+def gerar_escala_automatica(ano, mes, id_ministerio):
+    print(f"\n--- INICIANDO GERAÇÃO DA ESCALA PARA {mes}/{ano} [BALANCEAMENTO POR EVENTO] ---")
+
+    # --- 1. SETUP E CARGA DE DADOS ---
     apagar_escala_do_mes(ano, mes, id_ministerio)
     eventos = get_events_for_month(ano, mes, id_ministerio)
-    if eventos.empty: return {"status": "info", "message": "Não há eventos criados."}
-    
-    voluntarios_map, grupos_map = carregar_dados_para_escala(id_ministerio)
-    if not voluntarios_map: return {"status": "error", "message": "Nenhum voluntário encontrado."}
-
+    if eventos.empty: return {"status": "info", "message": "Não há eventos criados para este mês."}
+    voluntarios_map, grupos_map = carregar_dados_para_escala(id_ministerio, ano, mes)
+    if not voluntarios_map: return {"status": "error", "message": "Nenhum voluntário ativo encontrado."}
     funcoes_df = view_all_funcoes(id_ministerio)
+    funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
+    servicos_map = view_all_servicos_fixos(id_ministerio).set_index('id_servico')['nome_servico'].to_dict()
     cotas = get_cotas_all_servicos()
-    
     try:
         id_apoio = funcoes_df[funcoes_df['tipo_funcao'] == 'APOIO']['id_funcao'].iloc[0]
-        id_lider = funcoes_df[funcoes_df['nome_funcao'] == 'Líder']['id_funcao'].iloc[0]
         funcoes_principais = funcoes_df[funcoes_df['tipo_funcao'] == 'PRINCIPAL'].sort_values('prioridade_alocacao')
-        ids_funcoes_principais = set(funcoes_principais['id_funcao'])
-    except IndexError:
-        return {"status": "error", "message": "Funções essenciais 'Apoio' ou 'Líder' não encontradas."}
-
+    except IndexError: return {"status": "error", "message": "Funções essenciais como 'APOIO' ou do tipo 'PRINCIPAL' não encontradas."}
+    
     vagas_abertas = {}
     eventos['data_evento_obj'] = pd.to_datetime(eventos['data_evento']).dt.date
     for _, ev in eventos.iterrows():
         ev_cotas = cotas[cotas['id_servico'] == ev['id_servico_fixo']]
         for _, cota in ev_cotas.iterrows():
             id_funcao_cota = int(cota['id_funcao'])
-            if id_funcao_cota in funcoes_df['id_funcao'].values:
+            if id_funcao_cota in funcoes_map:
                 for i in range(1, int(cota['quantidade_necessaria']) + 1):
                     vaga_key = f"ev{ev['id_evento']}-func{id_funcao_cota}-inst{i}"
-                    vagas_abertas[vaga_key] = Vaga(
-                        id_evento=int(ev['id_evento']),
-                        data_evento_obj=ev['data_evento_obj'],
-                        id_funcao=id_funcao_cota,
-                        funcao_instancia=i,
-                        key=vaga_key
-                    )
-    
-    escala_final = []
+                    vagas_abertas[vaga_key] = Vaga(id_evento=int(ev['id_evento']), id_servico_fixo=int(ev['id_servico_fixo']), data_evento_obj=ev['data_evento_obj'], id_funcao=id_funcao_cota, funcao_instancia=i, key=vaga_key)
 
-    # --- FUNÇÃO AUXILIAR GLOBAL DE ALOCAÇÃO ---
+    escala_final = []
+    # MUDANÇA 1: O contador agora é por evento, não por dia.
+    staff_por_evento = defaultdict(int)
+
+    # --- FUNÇÕES INTERNAS ---
+    def get_motivo_rejeicao(voluntario, vaga):
+        if vaga.data_evento_obj in voluntario.dias_escalado: return f"já está escalado neste dia."
+        if vaga.id_funcao not in voluntario.funcoes: return f"não possui a função '{funcoes_map.get(vaga.id_funcao)}' em seu perfil."
+        if vaga.id_servico_fixo not in voluntario.disponibilidade: return f"não tem disponibilidade para o serviço '{servicos_map.get(vaga.id_servico_fixo)}'."
+        if vaga.id_evento in voluntario.indisponibilidades: return f"declarou indisponibilidade específica para esta data."
+        if voluntario.escalas_neste_mes >= voluntario.limite_escalas_mes: return f"já atingiu seu limite de {voluntario.limite_escalas_mes} escalas/mês."
+        return None
+
+    def voluntario_pode_servir(voluntario, vaga):
+        return get_motivo_rejeicao(voluntario, vaga) is None
+
     def alocar(voluntario, vaga):
         nonlocal escala_final, vagas_abertas
-        escala_final.append(EscalaEntry(
-            id_evento=vaga.id_evento,
-            id_funcao=vaga.id_funcao,
-            id_voluntario=voluntario.id_voluntario,
-            funcao_instancia=vaga.funcao_instancia
-        ))
+        escala_final.append(EscalaEntry(vaga.id_evento, vaga.id_funcao, voluntario.id_voluntario, vaga.funcao_instancia))
         voluntario.escalas_neste_mes += 1
         voluntario.dias_escalado.add(vaga.data_evento_obj)
-        if vaga.key in vagas_abertas:
-            del vagas_abertas[vaga.key]
-        
-        nome_funcao = funcoes_df.loc[funcoes_df['id_funcao'] == vaga.id_funcao, 'nome_funcao'].iloc[0]
-        print(f"ALOCADO: '{voluntario.nome_voluntario}' na função '{nome_funcao}' no dia {vaga.data_evento_obj}")
+        # MUDANÇA 2: Incrementa o contador do evento específico.
+        staff_por_evento[vaga.id_evento] += 1
+        if vaga.key in vagas_abertas: del vagas_abertas[vaga.key]
+        print(f"ALOCADO: '{voluntario.nome_voluntario}' na função '{funcoes_map.get(vaga.id_funcao)}' no dia {vaga.data_evento_obj}")
 
     # --- FASE 1: GRUPOS ---
-    print(f"--- FASE 1: Alocando {len(grupos_map)} Grupos ---")
+    print("--- FASE 1: Alocando Grupos ---")
     grupos_para_alocar = list(grupos_map.values())
     random.shuffle(grupos_para_alocar)
-    
-    eventos_unicos = list(eventos['id_evento'].unique())
+
     for grupo in grupos_para_alocar:
         if grupo.escalas_neste_mes >= grupo.limite_escalas_grupo: continue
+        
+        lista_de_eventos = eventos.to_dict('records')
+        # MUDANÇA 3: A ordenação agora é pela lotação de cada evento.
+        lista_de_eventos.sort(key=lambda ev: staff_por_evento[ev['id_evento']])
+        
+        grupo_foi_alocado = False
 
-        grupo.representantes = [m for m in grupo.membros if ids_funcoes_principais.intersection(m.funcoes)]
-        grupo.apoiadores = [m for m in grupo.membros if m not in grupo.representantes]
-
-        random.shuffle(eventos_unicos)
-        alocado_nesta_rodada = False
-        for id_evento in eventos_unicos:
-            data_evento = eventos[eventos['id_evento'] == id_evento]['data_evento_obj'].iloc[0]
-
-            ids_membros_grupo = {m.id_voluntario for m in grupo.membros}
-            ids_escalados_no_dia = {e.id_voluntario for e in escala_final if e.id_evento == id_evento}
-            if ids_membros_grupo.intersection(ids_escalados_no_dia): continue
+        for evento in lista_de_eventos:
+            id_do_evento_atual = evento['id_evento']
+            data_do_evento_atual = evento['data_evento_obj']
             
-            vagas_no_evento = [v for v in vagas_abertas.values() if v.id_evento == id_evento]
+            membros = grupo.membros
+            if not membros: continue
+            nome_primeiro_membro = membros[0].nome_voluntario
+            
+            if any(data_do_evento_atual in m.dias_escalado for m in membros): continue
+            if not all(m.escalas_neste_mes < m.limite_escalas_mes for m in membros): continue
 
-            if grupo.representantes:
-                vagas_apoio_no_evento = [v for v in vagas_no_evento if v.id_funcao == id_apoio]
-                if len(vagas_apoio_no_evento) < len(grupo.apoiadores): continue
-                for rep in grupo.representantes:
-                    vaga_principal_compativel = next((v for v in vagas_no_evento if v.id_funcao in rep.funcoes and v.id_funcao in ids_funcoes_principais), None)
-                    if vaga_principal_compativel:
-                        alocar(rep, vaga_principal_compativel)
-                        for i, apoiador in enumerate(grupo.apoiadores):
-                            alocar(apoiador, vagas_apoio_no_evento[i])
-                        alocado_nesta_rodada = True
+            vagas_no_evento = [v for v in vagas_abertas.values() if v.id_evento == id_do_evento_atual]
+            
+            potenciais_alocacoes = []
+            vagas_ja_usadas_neste_teste = set()
+            motivo_falha = None
+            
+            for membro in membros:
+                encontrou_vaga_para_membro = False
+                for vaga in vagas_no_evento:
+                    if vaga.key in vagas_ja_usadas_neste_teste: continue
+                    if vaga.id_funcao in membro.funcoes and voluntario_pode_servir(membro, vaga):
+                        potenciais_alocacoes.append({'membro': membro, 'vaga': vaga})
+                        vagas_ja_usadas_neste_teste.add(vaga.key)
+                        encontrou_vaga_para_membro = True
                         break
-            else:
-                vagas_apoio_no_evento = [v for v in vagas_no_evento if v.id_funcao == id_apoio]
-                if len(vagas_apoio_no_evento) >= len(grupo.membros):
-                    for i, membro in enumerate(grupo.membros):
-                        alocar(membro, vagas_apoio_no_evento[i])
-                    alocado_nesta_rodada = True
-            
-            if alocado_nesta_rodada:
+                if not encontrou_vaga_para_membro:
+                    motivo_falha = f"não foi possível encontrar uma vaga compatível para '{membro.nome_voluntario}'."
+                    vaga_teste = Vaga(id_evento=id_do_evento_atual, id_servico_fixo=evento['id_servico_fixo'], data_evento_obj=data_do_evento_atual, id_funcao=list(membro.funcoes)[0] if membro.funcoes else 0, funcao_instancia=0, key='')
+                    detalhe_rejeicao = get_motivo_rejeicao(membro, vaga_teste)
+                    if detalhe_rejeicao: motivo_falha += f" Causa provável: {detalhe_rejeicao}"
+                    break
+
+            if motivo_falha is None:
+                for alocacao in potenciais_alocacoes: alocar(alocacao['membro'], alocacao['vaga'])
                 grupo.escalas_neste_mes += 1
+                grupo_foi_alocado = True
                 break
+            else:
+                print(f"DEBUG: Grupo de '{nome_primeiro_membro}' falhou no evento de {servicos_map.get(evento['id_servico_fixo'])} em {data_do_evento_atual}. Motivo: {motivo_falha}")
+
+    # --- FASE 2: INDIVIDUAIS ---
+    print("--- FASE 2: Alocando Individuais ---")
     
-    # --- PREPARANDO FASES INDIVIDUAIS ---
-    print("--- FASES INDIVIDUAIS ---")
-    voluntarios_individuais = [v for v in voluntarios_map.values() if v.id_grupo is None]
+    def alocar_fase(candidatos, vagas_filtro):
+        random.shuffle(candidatos)
+        for voluntario in candidatos:
+            if voluntario.escalas_neste_mes >= voluntario.limite_escalas_mes: continue
+            vagas_possiveis = [v for v in vagas_abertas.values() if vagas_filtro(v) and voluntario_pode_servir(voluntario, v)]
+            if not vagas_possiveis: continue
+            # MUDANÇA 4: A ordenação aqui também passa a ser por evento.
+            vagas_possiveis.sort(key=lambda v: staff_por_evento[v.id_evento])
+            melhor_vaga = vagas_possiveis[0]
+            alocar(voluntario, melhor_vaga)
 
-    # --- FUNÇÃO AUXILIAR PARA FASES INDIVIDUAIS ---
-    def alocar_individuais_por_fase(candidatos, vagas_filtro, respeitar_limites=True):
-        nonlocal vagas_abertas, escala_final
-        
-        vagas_alvo = [v for v in vagas_abertas.values() if vagas_filtro(v)]
-        if not vagas_alvo or not candidatos: return
+    voluntarios_sem_grupo = [v for v in voluntarios_map.values() if v.id_grupo is None]
+    max_escalas = max((v.limite_escalas_mes for v in voluntarios_sem_grupo), default=0) if voluntarios_sem_grupo else 0
 
-        continuar_alocando = True
-        while continuar_alocando and vagas_alvo:
-            houve_alocacao_na_rodada = False
-            random.shuffle(candidatos)
-            
-            staff_por_dia = defaultdict(int)
-            for e in escala_final:
-                evento_data = next((ev['data_evento_obj'] for _, ev in eventos.iterrows() if ev['id_evento'] == e.id_evento), None)
-                if evento_data: staff_por_dia[evento_data] += 1
-            vagas_alvo.sort(key=lambda v: staff_por_dia[v.data_evento_obj])
-            
-            for voluntario in candidatos:
-                if respeitar_limites and voluntario.escalas_neste_mes >= voluntario.limite_escalas_mes: continue
-                
-                for vaga in vagas_alvo:
-                    if vaga.key in vagas_abertas and vaga.data_evento_obj not in voluntario.dias_escalado and vaga.id_funcao in voluntario.funcoes:
-                        alocar(voluntario, vaga)
-                        vagas_alvo.remove(vaga)
-                        houve_alocacao_na_rodada = True
-                        break
-                if houve_alocacao_na_rodada: break
-            
-            if not houve_alocacao_na_rodada:
-                continuar_alocando = False
+    for i in range(max_escalas):
+        print(f"  - Rodada de alocação individual {i+1}/{max_escalas}")
+        for _, funcao in funcoes_principais.iterrows():
+            candidatos = [v for v in voluntarios_sem_grupo if funcao['id_funcao'] in v.funcoes]
+            alocar_fase(candidatos, lambda v: v.id_funcao == funcao['id_funcao'])
+        candidatos_apoio = [v for v in voluntarios_sem_grupo if id_apoio in v.funcoes]
+        alocar_fase(candidatos_apoio, lambda v: v.id_funcao == id_apoio)
 
-    # --- EXECUÇÃO DAS FASES INDIVIDUAIS ---
-    for _, funcao in funcoes_principais.iterrows():
-        id_funcao_atual, nome_funcao_atual = funcao['id_funcao'], funcao['nome_funcao']
-        print(f"  - Alocando {nome_funcao_atual} (Individuais)")
-        candidatos = [v for v in voluntarios_individuais if id_funcao_atual in v.funcoes]
-        alocar_individuais_por_fase(candidatos, lambda v: v.id_funcao == id_funcao_atual)
-        
-    print("  - Alocando Apoio por Nível (Individuais)")
-    candidatos_apoio = [v for v in voluntarios_individuais if id_apoio in v.funcoes]
-    for nivel in ["Avançado", "Iniciante", "Intermediário"]:
-        candidatos_nivel = [v for v in candidatos_apoio if v.nivel_experiencia == nivel]
-        alocar_individuais_por_fase(candidatos_nivel, lambda v: v.id_funcao == id_apoio)
-
-    print("  - Forçando preenchimento de Líderes (Individuais)")
-    candidatos_lider = [v for v in voluntarios_individuais if id_lider in v.funcoes]
-    alocar_individuais_por_fase(candidatos_lider, lambda v: v.id_funcao == id_lider, respeitar_limites=False)
-
-    if vagas_abertas:
-        print(f"  - Forçando preenchimento Geral para {len(vagas_abertas)} vagas (Individuais)")
-        alocar_individuais_por_fase(voluntarios_individuais, lambda v: True, respeitar_limites=False)
-
+    # --- FINAL DA FUNÇÃO ---
+    if vagas_abertas: print(f"\nAVISO: {len(vagas_abertas)} vagas não puderam ser preenchidas e ficarão como 'VAGO'.")
     print("\n--- GERAÇÃO DA ESCALA CONCLUÍDA ---\n")
     if escala_final:
         print(f"Total de {len(escala_final)} alocações.")
@@ -1415,13 +1220,12 @@ def gerar_escala_automatica(ano, mes, id_ministerio):
             conn.commit()
             return {"status": "success", "message": f"Escala com {len(escala_final)} alocações gerada e salva com sucesso!"}
         except Exception as e:
-            conn.rollback()
+            conn.rollback(); print(f"ERRO AO SALVAR ESCALA: {e}")
             return {"status": "error", "message": f"Erro ao salvar escala: {e}"}
         finally:
             if conn: conn.close()
     else:
         return {"status": "info", "message": "Nenhuma alocação foi possível."}
-
 
 
 def get_vinculos_para_escala():

@@ -73,8 +73,10 @@ from backend.database import (
     view_all_servicos_fixos,
     view_all_voluntarios,
     get_all_voluntarios_com_detalhes_puro,
-    get_indisponibilidade_por_mes,
-    update_indisponibilidade_por_mes,
+    # get_indisponibilidade_por_mes,
+    # update_indisponibilidade_por_mes,
+    get_indisponibilidade_eventos,
+    update_indisponibilidade_eventos,
     get_voluntarios_elegiveis_para_vaga
 )
 
@@ -361,45 +363,30 @@ def delete_voluntario_by_id(id_voluntario: int):
     # --- ENDPOINTS DE INDISPONIBILIDADE VOLUNTÁRIOS---
 
 class IndisponibilidadeUpdate(BaseModel):
-    datas: List[str] # Espera uma lista de strings no formato "YYYY-MM-DD"
+    eventos_ids: List[int]
 
-# NOVO ENDPOINT PARA A INTERFACE DE INDISPONIBILIDADE
 @app.get("/voluntarios/{id_voluntario}/eventos-disponiveis/{ano}/{mes}", tags=["Voluntários"])
 def get_eventos_disponiveis_para_voluntario(id_voluntario: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
-    """
-    Retorna os eventos do mês em que um voluntário poderia servir,
-    baseado na sua disponibilidade padrão.
-    """
-    # Busca a disponibilidade padrão do voluntário (ex: [1, 2] para Domingo Manhã/Noite)
     servicos_disponiveis_ids = get_disponibilidade_of_voluntario(id_voluntario)
-    
-    # Busca todos os eventos do mês para o ministério
     id_ministerio = current_user['id_ministerio']
     eventos_do_mes_df = get_events_for_month(ano, mes, id_ministerio)
-
     if eventos_do_mes_df.empty or not servicos_disponiveis_ids:
         return []
-
-    # Filtra os eventos para mostrar apenas aqueles que correspondem à disponibilidade padrão
     eventos_relevantes_df = eventos_do_mes_df[eventos_do_mes_df['id_servico_fixo'].isin(servicos_disponiveis_ids)]
-    
     return eventos_relevantes_df.to_dict('records')
-
 
 @app.get("/voluntarios/{id_voluntario}/indisponibilidade/{ano}/{mes}", tags=["Voluntários"])
 def get_voluntario_indisponibilidade(id_voluntario: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
-    # Aqui você pode adicionar uma lógica para verificar se o admin logado
-    # pode ver a indisponibilidade deste voluntário, se necessário.
-    datas = get_indisponibilidade_por_mes(id_voluntario, ano, mes)
-    return datas
+    eventos_ids = get_indisponibilidade_eventos(id_voluntario, ano, mes)
+    return {"eventos_ids": eventos_ids}
 
 @app.put("/voluntarios/{id_voluntario}/indisponibilidade/{ano}/{mes}", tags=["Voluntários"])
 def update_voluntario_indisponibilidade(id_voluntario: int, ano: int, mes: int, data: IndisponibilidadeUpdate, current_user: dict = Depends(get_current_user)):
-    sucesso = update_indisponibilidade_por_mes(id_voluntario, ano, mes, data.datas)
+    sucesso = update_indisponibilidade_eventos(id_voluntario, ano, mes, data.eventos_ids)
     if not sucesso:
         raise HTTPException(status_code=500, detail="Falha ao salvar indisponibilidades no banco de dados.")
     return {"status": "success", "message": "Indisponibilidades atualizadas com sucesso."}
-
+ 
 # --- Endpoints de Vínculos (Grupos) ---
 class GrupoBase(BaseModel):
     nome_grupo: str
