@@ -990,87 +990,157 @@ def carregar_dados_para_escala(id_ministerio, ano, mes):
         if conn: conn.close()
 
 
-
+# Em database.py
 
 def get_escala_completa(ano, mes, id_ministerio):
     """
-    VERSÃO FINAL: Constrói a escala completa a partir de todas as vagas
-    definidas nas cotas e preenche com os voluntários alocados, corrigindo a consulta SQL.
+    VERSÃO DINÂMICA: Constrói a escala completa incluindo o TIPO e a PRIORIDADE de cada função,
+    tornando a exportação para PDF mais inteligente.
     """
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
 
     try:
-        eventos_df = get_events_for_month(ano, mes, id_ministerio)
-        if eventos_df.empty: return pd.DataFrame()
-
-        cotas_df = get_cotas_all_servicos()
-        funcoes_df = view_all_funcoes(id_ministerio)
-        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
-
-        # CORREÇÃO: Adicionado 'esc.id_funcao' à consulta SQL
-        query_escala = """
-            SELECT esc.id_funcao, esc.funcao_instancia, e.id_evento, v.id_voluntario, v.nome_voluntario
-            FROM escala esc
-            JOIN eventos e ON esc.id_evento = e.id_evento
-            JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
-            WHERE EXTRACT(YEAR FROM e.data_evento) = %s 
-              AND EXTRACT(MONTH FROM e.data_evento) = %s
-              AND v.id_ministerio = %s
+        # A query agora busca também o tipo e a prioridade da função
+        query = """
+            SELECT 
+                e.id_evento,
+                e.data_evento,
+                sf.nome_servico,
+                f.id_funcao,
+                f.nome_funcao,
+                f.tipo_funcao,
+                f.prioridade_alocacao,
+                sfc.quantidade_necessaria,
+                v.id_voluntario,
+                v.nome_voluntario
+            FROM servicos_fixos sf
+            JOIN eventos e ON sf.id_servico = e.id_servico_fixo
+            JOIN servico_funcao_cotas sfc ON sf.id_servico = sfc.id_servico
+            JOIN funcoes f ON sfc.id_funcao = f.id_funcao
+            LEFT JOIN escala esc ON e.id_evento = esc.id_evento AND f.id_funcao = esc.id_funcao
+            LEFT JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
+            WHERE sf.id_ministerio = %(id_ministerio)s
+              AND EXTRACT(YEAR FROM e.data_evento) = %(ano)s
+              AND EXTRACT(MONTH FROM e.data_evento) = %(mes)s
+            ORDER BY e.data_evento, sf.nome_servico, f.prioridade_alocacao, f.nome_funcao;
         """
-        escala_preenchida_df = pd.read_sql(query_escala, conn, params=(ano, mes, id_ministerio))
+        
+        # Esta query mais complexa já constrói a base da escala, incluindo vagas vazias
+        # A lógica de preenchimento de instância precisa ser feita em Python
+        df_base = pd.read_sql(query, conn, params={'id_ministerio': id_ministerio, 'ano': ano, 'mes': mes})
+
+        if df_base.empty:
+            return pd.DataFrame()
 
         escala_final = []
-        for _, evento in eventos_df.iterrows():
-            cotas_do_servico = cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]
-            for _, cota in cotas_do_servico.iterrows():
-                id_funcao = int(cota['id_funcao'])
-                if id_funcao not in funcoes_map: continue
-
-                for i in range(1, int(cota['quantidade_necessaria']) + 1):
-                    alocado = escala_preenchida_df[
-                        (escala_preenchida_df['id_evento'] == evento['id_evento']) &
-                        (escala_preenchida_df['id_funcao'] == id_funcao) &
-                        (escala_preenchida_df['funcao_instancia'] == i)
-                    ]
-                    
-                    vaga = {
-                        "funcao_instancia": i,
-                        "id_evento": int(evento['id_evento']),
-                        "data_evento": evento['data_evento'],
-                        "nome_servico": evento['nome_servico'],
-                        "id_funcao": id_funcao,
-                        "nome_funcao": funcoes_map[id_funcao],
-                        "id_voluntario": None,
-                        "nome_voluntario": None
-                    }
-
-                    if not alocado.empty:
-                        vaga["id_voluntario"] = int(alocado.iloc[0]['id_voluntario'])
-                        vaga["nome_voluntario"] = alocado.iloc[0]['nome_voluntario']
-                    
-                    escala_final.append(vaga)
+        # Agrupa por evento e função para expandir as cotas
+        for group_keys, group_df in df_base.groupby(['id_evento', 'id_funcao']):
+            id_evento, id_funcao = group_keys
+            
+            primeira_linha = group_df.iloc[0]
+            quantidade = primeira_linha['quantidade_necessaria']
+            
+            voluntarios_alocados = group_df.dropna(subset=['id_voluntario'])
+            
+            for i in range(1, quantidade + 1):
+                vaga = {
+                    "id_evento": int(id_evento),
+                    "data_evento": primeira_linha['data_evento'],
+                    "nome_servico": primeira_linha['nome_servico'],
+                    "id_funcao": int(id_funcao),
+                    "nome_funcao": primeira_linha['nome_funcao'],
+                    "tipo_funcao": primeira_linha['tipo_funcao'],
+                    "prioridade_alocacao": primeira_linha['prioridade_alocacao'],
+                    "funcao_instancia": i,
+                    "id_voluntario": None,
+                    "nome_voluntario": None
+                }
+                
+                if i <= len(voluntarios_alocados):
+                    voluntario = voluntarios_alocados.iloc[i-1]
+                    vaga['id_voluntario'] = int(voluntario['id_voluntario'])
+                    vaga['nome_voluntario'] = voluntario['nome_voluntario']
+                
+                escala_final.append(vaga)
         
         if not escala_final: return pd.DataFrame()
+        
         df_final = pd.DataFrame(escala_final)
-        df_final = df_final.sort_values(by=['data_evento', 'nome_servico', 'id_funcao', 'funcao_instancia'])
+        df_final = df_final.sort_values(by=['data_evento', 'nome_servico', 'prioridade_alocacao', 'funcao_instancia'])
         return df_final
+
     finally:
         if conn: conn.close()
 
-# arquivo: backend/database.py (SUBSTITUA A FUNÇÃO 'gerar_escala_automatica')
 
-# arquivo: backend/database.py (SUBSTITUA A FUNÇÃO 'gerar_escala_automatica' INTEIRA POR ESTE BLOCO)
+# def get_escala_completa(ano, mes, id_ministerio):
+#     """
+#     VERSÃO FINAL: Constrói a escala completa a partir de todas as vagas
+#     definidas nas cotas e preenche com os voluntários alocados, corrigindo a consulta SQL.
+#     """
+#     conn = ensure_connection()
+#     if conn is None: return pd.DataFrame()
 
-# arquivo: backend/database.py (SUBSTITUA A FUNÇÃO 'gerar_escala_automatica' INTEIRA POR ESTE BLOCO)
+#     try:
+#         eventos_df = get_events_for_month(ano, mes, id_ministerio)
+#         if eventos_df.empty: return pd.DataFrame()
 
-# arquivo: backend/database.py (VERSÃO FINAL ROBUSTA)
+#         cotas_df = get_cotas_all_servicos()
+#         funcoes_df = view_all_funcoes(id_ministerio)
+#         funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
 
-# arquivo: backend/database.py (VERSÃO FINAL DEFINITIVA)
+#         # CORREÇÃO: Adicionado 'esc.id_funcao' à consulta SQL
+#         query_escala = """
+#             SELECT esc.id_funcao, esc.funcao_instancia, e.id_evento, v.id_voluntario, v.nome_voluntario
+#             FROM escala esc
+#             JOIN eventos e ON esc.id_evento = e.id_evento
+#             JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
+#             WHERE EXTRACT(YEAR FROM e.data_evento) = %s 
+#               AND EXTRACT(MONTH FROM e.data_evento) = %s
+#               AND v.id_ministerio = %s
+#         """
+#         escala_preenchida_df = pd.read_sql(query_escala, conn, params=(ano, mes, id_ministerio))
 
-# arquivo: backend/database.py (VERSÃO FINAL COM CORREÇÃO DE EVENTO)
+#         escala_final = []
+#         for _, evento in eventos_df.iterrows():
+#             cotas_do_servico = cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]
+#             for _, cota in cotas_do_servico.iterrows():
+#                 id_funcao = int(cota['id_funcao'])
+#                 if id_funcao not in funcoes_map: continue
 
-# arquivo: backend/database.py (VERSÃO FINAL COM BALANCEAMENTO POR EVENTO)
+#                 for i in range(1, int(cota['quantidade_necessaria']) + 1):
+#                     alocado = escala_preenchida_df[
+#                         (escala_preenchida_df['id_evento'] == evento['id_evento']) &
+#                         (escala_preenchida_df['id_funcao'] == id_funcao) &
+#                         (escala_preenchida_df['funcao_instancia'] == i)
+#                     ]
+                    
+#                     vaga = {
+#                         "funcao_instancia": i,
+#                         "id_evento": int(evento['id_evento']),
+#                         "data_evento": evento['data_evento'],
+#                         "nome_servico": evento['nome_servico'],
+#                         "id_funcao": id_funcao,
+#                         "nome_funcao": funcoes_map[id_funcao],
+#                         "id_voluntario": None,
+#                         "nome_voluntario": None
+#                     }
+
+#                     if not alocado.empty:
+#                         vaga["id_voluntario"] = int(alocado.iloc[0]['id_voluntario'])
+#                         vaga["nome_voluntario"] = alocado.iloc[0]['nome_voluntario']
+                    
+#                     escala_final.append(vaga)
+        
+#         if not escala_final: return pd.DataFrame()
+#         df_final = pd.DataFrame(escala_final)
+#         df_final = df_final.sort_values(by=['data_evento', 'nome_servico', 'id_funcao', 'funcao_instancia'])
+#         return df_final
+#     finally:
+#         if conn: conn.close()
+
+
 
 def gerar_escala_automatica(ano, mes, id_ministerio):
     print(f"\n--- INICIANDO GERAÇÃO DA ESCALA PARA {mes}/{ano} [BALANCEAMENTO POR EVENTO] ---")
