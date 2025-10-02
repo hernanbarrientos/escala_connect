@@ -1,4 +1,4 @@
-// CÓDIGO COMPLETO PARA frontend/src/pages/GerarEscalaPage.jsx
+// CÓDIGO COMPLETO E ATUALIZADO PARA frontend/src/pages/GerarEscalaPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
@@ -22,9 +22,11 @@ function GerarEscalaPage() {
     const [error, setError] = useState(null);
     const [editingSlotKey, setEditingSlotKey] = useState(null);
     const [availableVolunteers, setAvailableVolunteers] = useState([]);
-        // States para os modais de confirmação
-    const [actionToConfirm, setActionToConfirm] = useState(null); // 'createEvents' ou 'generateScale'
+    const [actionToConfirm, setActionToConfirm] = useState(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    
+    // NOVO ESTADO PARA CONTROLE DO DOWNLOAD
+    const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -49,7 +51,6 @@ function GerarEscalaPage() {
         }
     };
 
-    // --- NOVA FUNÇÃO PARA CRIAR EVENTOS ---
     const handleCreateEvents = async () => {
       try {
         const idMinisterio = 1;
@@ -76,8 +77,6 @@ function GerarEscalaPage() {
       }
     };
 
- 
-    // --- LÓGICA PARA ABRIR O MODAL CORRETO ---
     const openConfirmModal = (actionType) => {
         setActionToConfirm(actionType);
         setIsConfirmModalOpen(true);
@@ -89,10 +88,7 @@ function GerarEscalaPage() {
                 title: 'Confirmar Criação de Eventos',
                 message: `Tem certeza que deseja criar os eventos para ${meses[selectedMes]}/${selectedAno}? Eventos existentes para este mês serão substituídos.`,
                 action: handleCreateEvents,
-                onSuccess: () => {
-                    // Não precisa recarregar a página, apenas fecha o modal.
-                    // Opcional: mostrar um alerta de sucesso customizado aqui.
-                }
+                onSuccess: () => {}
             };
         }
         if (actionToConfirm === 'generateScale') {
@@ -100,23 +96,25 @@ function GerarEscalaPage() {
                 title: 'Confirmar Geração de Escala',
                 message: `Tem certeza que deseja gerar uma nova escala para ${meses[selectedMes]}/${selectedAno}? A escala atual (se existir) será apagada.`,
                 action: handleGerarEscala,
-                onSuccess: fetchData // Recarrega a escala após o sucesso
+                onSuccess: fetchData
             };
         }
-        return {}; // Configuração padrão vazia
+        return {};
     };
 
     const modalConfig = getModalConfig();
 
+    // FUNÇÃO ATUALIZADA
     const handleDownloadPdf = async () => {
+        setIsDownloadingPdf(true);
+        setError(null); 
         try {
-            const idMinisterio = 1; // Do contexto
+            const idMinisterio = 1;
             const response = await api.get(
                 `/ministerios/${idMinisterio}/escala/${selectedAno}/${selectedMes}/pdf`,
-                { responseType: 'blob' } // Importante: diz ao axios para tratar a resposta como um arquivo
+                { responseType: 'blob' }
             );
             
-            // Cria um link temporário para o download
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
@@ -127,34 +125,14 @@ function GerarEscalaPage() {
 
         } catch (error) {
             setError("Falha ao gerar o PDF.");
+        } finally {
+            setIsDownloadingPdf(false);
         }
     };
-
-
-    // const handleGerarEscala = async () => {
-    //     if (!window.confirm(`Tem certeza que deseja gerar uma nova escala para ${meses[selectedMes]}/${selectedAno}? A escala atual (se existir) será apagada.`)) {
-    //         return;
-    //     }
-    //     setGenerating(true);
-    //     setError(null);
-    //     try {
-    //         const idMinisterio = 1;
-    //         await api.post(`/ministerios/${idMinisterio}/escala/gerar`, {
-    //             ano: selectedAno,
-    //             mes: selectedMes,
-    //         });
-    //         await fetchData();
-    //     } catch (err) {
-    //         setError("Ocorreu um erro ao gerar a escala.");
-    //     } finally {
-    //         setGenerating(false);
-    //     }
-    // };
 
     const handleEditSlot = async (item) => {
         if (editingSlotKey) return;
         try {
-            // ALTERAÇÃO: Chama o novo endpoint inteligente
             const response = await api.get(`/escala/vaga-elegiveis`, {
                 params: {
                     id_funcao: item.id_funcao,
@@ -162,7 +140,6 @@ function GerarEscalaPage() {
                 }
             });
 
-            // Adiciona o voluntário atual à lista, caso ele precise ser re-selecionado
             const currentVolunteerInList = response.data.some(v => v.id_voluntario === item.id_voluntario);
             let finalVolunteerList = response.data;
             if (item.id_voluntario && !currentVolunteerInList) {
@@ -199,9 +176,7 @@ function GerarEscalaPage() {
         return escala.reduce((acc, item) => {
             const servicoKey = item.nome_servico;
             const eventoKey = item.id_evento;
-            if (!acc[servicoKey]) {
-                acc[servicoKey] = {};
-            }
+            if (!acc[servicoKey]) acc[servicoKey] = {};
             if (!acc[servicoKey][eventoKey]) {
                 acc[servicoKey][eventoKey] = {
                     id_evento: item.id_evento,
@@ -223,7 +198,6 @@ function GerarEscalaPage() {
             }
             return acc;
         }, {});
-
         const mapa = {};
         voluntarios.forEach(vol => {
             mapa[vol.id_voluntario] = {
@@ -241,13 +215,10 @@ function GerarEscalaPage() {
     }, [voluntarios, voluntarioContagemMap]);
 
     const renderContent = () => {
-        if (loading || generating) {
-            return <Spinner text={generating ? "O algoritmo está trabalhando... Isso pode levar alguns segundos." : "Carregando escala..."} />;
-        }
-        if (error) { return <p className="error-message">{error}</p>; }
-        if (Object.keys(escalaAgrupadaPorServico).length === 0) {
-            return <div className="spinner-container"><p>Nenhuma escala encontrada. Selecione o período e clique em "Gerar Escala Automática".</p></div>;
-        }
+        if (loading || generating) return <Spinner text={generating ? "O algoritmo está trabalhando... Isso pode levar alguns segundos." : "Carregando escala..."} />;
+        if (error) return <p className="error-message">{error}</p>;
+        if (Object.keys(escalaAgrupadaPorServico).length === 0) return <div className="spinner-container"><p>Nenhuma escala encontrada. Selecione o período e clique em "Gerar Escala Automática".</p></div>;
+        
         const ordemServicos = ["Domingo Manhã", "Domingo Noite", "Quinta-feira"];
         const servicosOrdenados = Object.keys(escalaAgrupadaPorServico).sort((a,b) => ordemServicos.indexOf(a) - ordemServicos.indexOf(b));
 
@@ -269,7 +240,7 @@ function GerarEscalaPage() {
                                             const prioridadeA = ordemFuncoes.indexOf(a.nome_funcao);
                                             const prioridadeB = ordemFuncoes.indexOf(b.nome_funcao);
                                             return (prioridadeA === -1 ? 99 : prioridadeA) - (prioridadeB === -1 ? 99 : prioridadeB);
-                                        }).map((item, index) => {
+                                        }).map((item) => {
                                             const currentSlotKey = getSlotKey(item);
                                             const contagem = voluntarioContagemMap[item.id_voluntario];
                                             const sobrecarregado = contagem && contagem.escalado_vezes > contagem.limite;
@@ -300,20 +271,10 @@ function GerarEscalaPage() {
                 <h2 className="contagem-header">Voluntários Não Escalados Neste Mês</h2>
                 {voluntariosNaoEscalados.length > 0 ? (
                     <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Nome do Voluntário</th>
-                                <th>Nível</th>
-                                <th>Limite (Mês)</th>
-                            </tr>
-                        </thead>
+                        <thead><tr><th>Nome do Voluntário</th><th>Nível</th><th>Limite (Mês)</th></tr></thead>
                         <tbody>
                             {voluntariosNaoEscalados.map(vol => (
-                                <tr key={vol.id_voluntario}>
-                                    <td>{vol.nome_voluntario}</td>
-                                    <td>{vol.nivel_experiencia}</td>
-                                    <td>{vol.limite_escalas_mes}</td>
-                                </tr>
+                                <tr key={vol.id_voluntario}><td>{vol.nome_voluntario}</td><td>{vol.nivel_experiencia}</td><td>{vol.limite_escalas_mes}</td></tr>
                             ))}
                         </tbody>
                     </table>
@@ -336,25 +297,24 @@ function GerarEscalaPage() {
                 <select value={selectedAno} onChange={(e) => setSelectedAno(Number(e.target.value))} disabled={generating}>
                     {anos.map(ano => <option key={ano} value={ano}>{ano}</option>)}
                 </select>
-                {/* Botões agora abrem o modal de confirmação */}
                 <button onClick={() => openConfirmModal('createEvents')} disabled={loading} className="add-btn" style={{backgroundColor: '#17a2b8'}}>
                     Criar Eventos do Mês
                 </button>
                 <button onClick={() => openConfirmModal('generateScale')} disabled={loading} className="add-btn">
                     Gerar Escala Automática
                 </button>
+                {/* BOTÃO MODIFICADO */}
                 <button 
                     onClick={handleDownloadPdf} 
-                    disabled={escala.length === 0 || loading} 
+                    disabled={escala.length === 0 || loading || isDownloadingPdf} 
                     className="add-btn" 
                     style={{backgroundColor: '#6c757d'}}
                 >
-                    Baixar PDF
+                    {isDownloadingPdf ? 'Gerando PDF...' : 'Baixar PDF'}
                 </button>
             </div>
             {renderContent()}
 
-            {/* Modal de confirmação genérico */}
             <ActionFeedbackModal
                 isOpen={isConfirmModalOpen}
                 onClose={() => setIsConfirmModalOpen(false)}
