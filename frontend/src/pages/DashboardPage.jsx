@@ -30,19 +30,6 @@ function DashboardPage() {
     fetchData();
   }, []);
 
-  // contagem de quanto tempo o voluntario está inativo
-  const calcularDiasInativo = (dataString) => {
-  if (!dataString) return null; // Para os antigos sem data
-  const dataInativacao = new Date(dataString);
-  const hoje = new Date();
-  
-  // Cálculo da diferença em milissegundos
-  const diffTime = Math.abs(hoje - dataInativacao);
-  // Converte para dias (divide por 1000ms * 60s * 60min * 24h)
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-  return diffDays;
-};
-
   // Otimização: useMemo evita que os dados do gráfico sejam recalculados a cada renderização
   const pieChartData = useMemo(() => {
     if (!data?.grafico_niveis) return null;
@@ -134,31 +121,17 @@ function DashboardPage() {
       </div>
       
       <div className="atencao-grid">
-<div className="atencao-card">
+        <div className="atencao-card">
           <h3>Voluntários Inativos</h3>
           {data.pontos_atencao.voluntarios_inativos.length > 0 ? (
             <>
-              <div className="warning-box">
-                Você possui {data.pontos_atencao.voluntarios_inativos.length} voluntário(s) inativo(s).
-              </div>
+              <div className="warning-box">Você possui {data.pontos_atencao.voluntarios_inativos.length} voluntário(s) inativo(s).</div>
               <ul>
-                {data.pontos_atencao.voluntarios_inativos.map((vol, index) => {
-                  const dias = calcularDiasInativo(vol.data);
-                  return (
-                    <li key={index} className="inactive-item">
-                      <span className="name">{vol.nome}</span>
-                      {dias !== null && (
-                        <span style={{ marginLeft: '10px', color: '#ff6b6b', fontSize: '0.85em', fontWeight: 'bold' }}>
-                          ({dias} {dias === 1 ? 'dia' : 'dias'} off)
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
+                {data.pontos_atencao.voluntarios_inativos.map(nome => <li key={nome}>{nome}</li>)}
               </ul>
             </>
           ) : (
-            <div className="success-box">Ótimo! Nenhum voluntário inativo.</div>
+             <div className="success-box">Ótimo! Nenhum voluntário inativo.</div>
           )}
           <button onClick={() => navigate('/voluntarios')} className="manage-btn">Gerenciar voluntários</button>
         </div>

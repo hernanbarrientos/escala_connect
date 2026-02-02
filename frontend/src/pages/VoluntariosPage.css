@@ -126,6 +126,8 @@
   }
 }
 
+/* Adicionar ao final de frontend/src/pages/VoluntariosPage.css */
+
 .result-view {
   display: flex;
   flex-direction: column;
@@ -160,26 +162,3 @@
   background-color: rgba(255, 75, 75, 0.2);
   border: 3px solid var(--danger-color);
 }
-
-
-.search-input {
-  padding: 0.7rem 1rem;
-  border-radius: 8px;
-  border: 1px solid #414351;
-  background-color: #262730;
-  color: #f0f2f6;
-  font-size: 1rem;
-  width: auto;
-}
-
-.checkbox-item{
-  margin-right: 1.9rem;
-   
-}
-
-.selectBox-item label{
-  margin-right: 0.5rem;
-   
-}
-
-
