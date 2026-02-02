@@ -1,4 +1,4 @@
-// arquivo: frontend/src/pages/VoluntariosPage.jsx (Versão Final Completa)
+// arquivo: frontend/src/pages/VoluntariosPage.jsx
 
 import { useState, useEffect } from 'react';
 import api from '../services/api';
@@ -11,19 +11,23 @@ import '../styles/ManagementPage.css';
 import './VoluntariosPage.css';
 
 function VoluntariosPage() {
+  // --- ESTADOS DE DADOS ---
   const [voluntarios, setVoluntarios] = useState([]);
   const [funcoes, setFuncoes] = useState([]);
   const [servicos, setServicos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // --- ESTADOS DE MODAL ---
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [currentVoluntario, setCurrentVoluntario] = useState(null);
-
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [volunteerToDelete, setVolunteerToDelete] = useState(null);
 
+  // --- ESTADOS DE FILTRO (NOVOS) ---
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtroCargo, setFiltroCargo] = useState(''); // ID da função selecionada
+  const [filtroDia, setFiltroDia] = useState('');     // ID do serviço/dia selecionado
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showInactive, setShowInactive] = useState(false);
 
@@ -50,6 +54,7 @@ function VoluntariosPage() {
       setServicos(resServicos.data);
     } catch (err) {
       setError("Falha ao carregar dados iniciais.");
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -67,7 +72,7 @@ function VoluntariosPage() {
       setCurrentVoluntario(response.data);
       setIsFormModalOpen(true);
     } catch (err) {
-      setError("Falha ao carregar detalhes do voluntário para edição.");
+      setError("Falha ao carregar detalhes do voluntário.");
     } finally {
       setLoadingVoluntarioId(null);
     }
@@ -89,7 +94,7 @@ function VoluntariosPage() {
       handleCloseFormModal();
       await fetchInitialData();
     } catch (err) {
-      setError("Falha ao salvar o voluntário. Verifique o console do backend para mais detalhes.");
+      setError("Falha ao salvar o voluntário. Verifique o console.");
     }
   };
   
@@ -109,13 +114,32 @@ function VoluntariosPage() {
       await api.delete(`/voluntarios/${volunteerToDelete.id_voluntario}`);
     } catch(err) {
       setError("Falha ao inativar o voluntário.");
-      throw err; // Lança o erro para o ActionFeedbackModal saber que falhou
+      throw err;
     }
   };
 
-  const filteredVoluntarios = voluntarios.filter(vol =>
-    vol.nome_voluntario.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // --- LÓGICA DE FILTRAGEM ATUALIZADA ---
+  const filteredVoluntarios = voluntarios.filter(vol => {
+    // 1. Filtro por Nome
+    const matchNome = vol.nome_voluntario.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // 2. Filtro por Cargo (Função)
+    // Se filtroCargo estiver vazio, aceita todos. Se não, verifica se o ID está na lista de funções do voluntário.
+    // O backend envia 'funcoes' como uma lista de IDs: [1, 5, 10]
+    const listaFuncoes = vol.funcoes || [];
+    const matchCargo = filtroCargo 
+      ? listaFuncoes.includes(parseInt(filtroCargo)) 
+      : true;
+
+    // 3. Filtro por Dia (Serviço)
+    // O backend envia 'disponibilidade' como uma lista de IDs de serviço: [2, 3]
+    const listaDisp = vol.disponibilidade || [];
+    const matchDia = filtroDia 
+      ? listaDisp.includes(parseInt(filtroDia)) 
+      : true;
+
+    return matchNome && matchCargo && matchDia;
+  });
   
   const displayedVoluntarios = itemsPerPage === -1 ? filteredVoluntarios : filteredVoluntarios.slice(0, itemsPerPage);
 
@@ -130,6 +154,7 @@ function VoluntariosPage() {
       </div>
 
       <div className="controls-bar">
+        {/* BUSCA */}
         <input
           type="search"
           placeholder="Buscar por nome..."
@@ -137,6 +162,40 @@ function VoluntariosPage() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
+
+        {/* --- NOVOS FILTROS --- */}
+        <select 
+          className="search-input"
+          value={filtroCargo}
+          onChange={(e) => setFiltroCargo(e.target.value)}
+        >
+          <option value="">Filtrar por Cargo (Todos)</option>
+          {funcoes.map(f => (
+            <option key={f.id_funcao} value={f.id_funcao}>{f.nome_funcao}</option>
+          ))}
+        </select>
+
+        <select 
+          className="search-input"
+          value={filtroDia}
+          onChange={(e) => setFiltroDia(e.target.value)}
+        >
+          <option value="">Filtrar por Dia (Todos)</option>
+          {servicos.map(s => {
+            // CONTA QUANTOS VOLUNTÁRIOS TÊM ESSE ID DE SERVIÇO
+            const count = voluntarios.filter(vol => 
+              (vol.disponibilidade || []).includes(parseInt(s.id_servico)) // <--- O SEGREDO: parseInt
+            ).length;
+
+            return (
+              <option key={s.id_servico} value={s.id_servico}>
+                {s.nome_servico} ({count})
+              </option>
+            );
+          })}
+        </select>
+        {/* --------------------- */}
+
         <div className="view-selector">
           <div className="checkbox-item">
             <input 
@@ -145,15 +204,18 @@ function VoluntariosPage() {
               checked={showInactive} 
               onChange={(e) => setShowInactive(e.target.checked)} 
             />
-            <label htmlFor="show-inactive">Mostrar inativos</label>
+          <label htmlFor="show-inactive">Mostrar<br/>Inativos</label>
           </div>
-          <label htmlFor="items-per-page">Mostrar:</label>
-          <select id="items-per-page" value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))}>
-            <option value={10}>10 itens</option>
-            <option value={25}>25 itens</option>
-            <option value={50}>50 itens</option>
-            <option value={-1}>Todos</option>
-          </select>
+          
+          <div className="selectBox-item">            
+           <label htmlFor="items-per-page">Mostrar:</label>
+            <select id="items-per-page" value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))}>
+              <option value={10}>10 itens</option>
+              <option value={25}>25 itens</option>
+              <option value={50}>50 itens</option>
+              <option value={-1}>Todos</option>
+            </select>
+          </div>
         </div>
       </div>
 

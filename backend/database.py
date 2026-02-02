@@ -634,17 +634,20 @@ def view_all_voluntarios(id_ministerio, include_inactive=False):
 
 
 
-def get_all_voluntarios_com_detalhes(id_ministerio):
-    """ Busca todos os detalhes dos voluntários de um ministério específico. """
+def get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=False):
+    """ Busca todos os detalhes (funções e disponibilidade) para a listagem principal. """
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
     try:
-        query = """
+        # A query agora é dinâmica para o status ativo/inativo
+        filtro_ativo = "" if include_inactive else "AND v.ativo = TRUE"
+        
+        query = f"""
             SELECT
                 v.id_voluntario, v.nome_voluntario, v.limite_escalas_mes,
-                v.nivel_experiencia, v.id_grupo,
-                COALESCE(funcoes_agg.funcoes, '{}') AS funcoes,
-                COALESCE(disp_agg.disponibilidades, '{}') AS disponibilidade
+                v.nivel_experiencia, v.id_grupo, v.ativo,
+                COALESCE(funcoes_agg.funcoes, '{{}}') AS funcoes,
+                COALESCE(disp_agg.disponibilidades, '{{}}') AS disponibilidade
             FROM voluntarios v
             LEFT JOIN (
                 SELECT id_voluntario, array_agg(id_funcao) as funcoes
@@ -654,26 +657,22 @@ def get_all_voluntarios_com_detalhes(id_ministerio):
                 SELECT id_voluntario, array_agg(id_servico) as disponibilidades
                 FROM voluntario_disponibilidade GROUP BY id_voluntario
             ) AS disp_agg ON v.id_voluntario = disp_agg.id_voluntario
-            WHERE v.ativo = TRUE AND v.id_ministerio = %s;
+            WHERE v.id_ministerio = %s {filtro_ativo}
+            ORDER BY v.nome_voluntario ASC;
         """
         df = pd.read_sql(query, conn, params=(id_ministerio,))
 
-        # ======================================================================
-        # CORREÇÃO CRÍTICA ADICIONADA AQUI
-        # Garante que os itens dentro das listas sejam números inteiros.
         if not df.empty:
+            # Garante que as listas contenham inteiros para o JSON funcionar
             df['funcoes'] = df['funcoes'].apply(lambda arr: [int(f) for f in arr])
             df['disponibilidade'] = df['disponibilidade'].apply(lambda arr: [int(f) for f in arr])
-        # ======================================================================
 
         return df
     except Exception as e:
         print(f"Erro ao buscar dados detalhados dos voluntários: {e}")
         return pd.DataFrame()
     finally:
-        if conn:
-            conn.close()
-
+        if conn: conn.close()
 
 
 def get_events_for_month(ano, mes, id_ministerio):
@@ -1072,73 +1071,6 @@ def get_escala_completa(ano, mes, id_ministerio):
 
     finally:
         if conn: conn.close()
-
-
-# def get_escala_completa(ano, mes, id_ministerio):
-#     """
-#     VERSÃO FINAL: Constrói a escala completa a partir de todas as vagas
-#     definidas nas cotas e preenche com os voluntários alocados, corrigindo a consulta SQL.
-#     """
-#     conn = ensure_connection()
-#     if conn is None: return pd.DataFrame()
-
-#     try:
-#         eventos_df = get_events_for_month(ano, mes, id_ministerio)
-#         if eventos_df.empty: return pd.DataFrame()
-
-#         cotas_df = get_cotas_all_servicos()
-#         funcoes_df = view_all_funcoes(id_ministerio)
-#         funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
-
-#         # CORREÇÃO: Adicionado 'esc.id_funcao' à consulta SQL
-#         query_escala = """
-#             SELECT esc.id_funcao, esc.funcao_instancia, e.id_evento, v.id_voluntario, v.nome_voluntario
-#             FROM escala esc
-#             JOIN eventos e ON esc.id_evento = e.id_evento
-#             JOIN voluntarios v ON esc.id_voluntario = v.id_voluntario
-#             WHERE EXTRACT(YEAR FROM e.data_evento) = %s 
-#               AND EXTRACT(MONTH FROM e.data_evento) = %s
-#               AND v.id_ministerio = %s
-#         """
-#         escala_preenchida_df = pd.read_sql(query_escala, conn, params=(ano, mes, id_ministerio))
-
-#         escala_final = []
-#         for _, evento in eventos_df.iterrows():
-#             cotas_do_servico = cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]
-#             for _, cota in cotas_do_servico.iterrows():
-#                 id_funcao = int(cota['id_funcao'])
-#                 if id_funcao not in funcoes_map: continue
-
-#                 for i in range(1, int(cota['quantidade_necessaria']) + 1):
-#                     alocado = escala_preenchida_df[
-#                         (escala_preenchida_df['id_evento'] == evento['id_evento']) &
-#                         (escala_preenchida_df['id_funcao'] == id_funcao) &
-#                         (escala_preenchida_df['funcao_instancia'] == i)
-#                     ]
-                    
-#                     vaga = {
-#                         "funcao_instancia": i,
-#                         "id_evento": int(evento['id_evento']),
-#                         "data_evento": evento['data_evento'],
-#                         "nome_servico": evento['nome_servico'],
-#                         "id_funcao": id_funcao,
-#                         "nome_funcao": funcoes_map[id_funcao],
-#                         "id_voluntario": None,
-#                         "nome_voluntario": None
-#                     }
-
-#                     if not alocado.empty:
-#                         vaga["id_voluntario"] = int(alocado.iloc[0]['id_voluntario'])
-#                         vaga["nome_voluntario"] = alocado.iloc[0]['nome_voluntario']
-                    
-#                     escala_final.append(vaga)
-        
-#         if not escala_final: return pd.DataFrame()
-#         df_final = pd.DataFrame(escala_final)
-#         df_final = df_final.sort_values(by=['data_evento', 'nome_servico', 'id_funcao', 'funcao_instancia'])
-#         return df_final
-#     finally:
-#         if conn: conn.close()
 
 
 

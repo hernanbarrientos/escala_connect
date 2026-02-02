@@ -143,7 +143,6 @@ def get_todos_ministerios():
         if conn:
             conn.close()
 
-# NOVO ENDPOINT DE DASHBOARD
 @app.get("/ministerios/{id_ministerio}/dashboard", tags=["Dashboard"])
 def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_current_user)):
     if current_user["id_ministerio"] != id_ministerio:
@@ -156,10 +155,28 @@ def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_curr
     eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
     cotas_df = get_cotas_all_servicos()
     
+    # --- LOGICA DOS INATIVOS (ATUALIZADA) ---
     todos_voluntarios_com_inativos_df = view_all_voluntarios(id_ministerio, include_inactive=True)
-    voluntarios_inativos = todos_voluntarios_com_inativos_df[~todos_voluntarios_com_inativos_df['ativo']]
+    voluntarios_inativos_df = todos_voluntarios_com_inativos_df[~todos_voluntarios_com_inativos_df['ativo']].copy()
 
-    # --- LÓGICA CORRIGIDA E ADICIONADA ---
+    # Prepara a lista de objetos {nome, data} para enviar ao frontend
+    lista_inativos_com_data = []
+    if not voluntarios_inativos_df.empty:
+        # Garante que a coluna de data seja lida como data (evita erros se estiver vazia)
+        voluntarios_inativos_df['data_inativacao'] = pd.to_datetime(voluntarios_inativos_df['data_inativacao'], errors='coerce')
+        
+        for _, row in voluntarios_inativos_df.iterrows():
+            data_str = None
+            # Se tiver data válida, formata para string
+            if pd.notnull(row['data_inativacao']):
+                data_str = row['data_inativacao'].strftime('%Y-%m-%d')
+            
+            lista_inativos_com_data.append({
+                "nome": row['nome_voluntario'],
+                "data": data_str
+            })
+
+    # --- RESTANTE DA LÓGICA (MANTIDA) ---
     voluntarios_sem_funcao_df = voluntarios_df[voluntarios_df['funcoes'].apply(lambda x: not x)]
     lista_voluntarios_sem_funcao = voluntarios_sem_funcao_df['nome_voluntario'].tolist()
     
@@ -194,13 +211,13 @@ def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_curr
         "grafico_niveis": niveis_contagem,
         "grafico_funcoes": contagem_funcoes,
         "pontos_atencao": {
-            "voluntarios_inativos": voluntarios_inativos['nome_voluntario'].tolist(),
+            "voluntarios_inativos": lista_inativos_com_data, # <-- AQUI MUDOU
             "voluntarios_sem_funcao": lista_voluntarios_sem_funcao,
         }
-    }
+    } 
 
+# ENDPOINT DAS FUNÇÕES
 
-# --- Endpoints de Funções ---
 class FuncaoBase(BaseModel):
     nome_funcao: str
     descricao: str = ""
@@ -214,7 +231,7 @@ class FuncaoCreate(FuncaoBase):
 # O modelo de atualização também herda todos os campos
 class FuncaoUpdate(FuncaoBase):
     pass
-    
+
 
 @app.get("/ministerios/{id_ministerio}/funcoes", tags=["Funções"])
 def get_funcoes_por_ministerio(id_ministerio: int):
@@ -222,26 +239,25 @@ def get_funcoes_por_ministerio(id_ministerio: int):
     return df_funcoes.to_dict('records')
 
 @app.post("/ministerios/{id_ministerio}/funcoes", tags=["Funções"])
-def create_funcao_no_ministerio(id_ministerio: int, funcao: FuncaoCreate):
+def create_funcao_no_ministerio(id_ministerio: int, funcao: FuncaoCreate): # <--- Agora ele vai encontrar FuncaoCreate
     # Passando os novos campos para a função add_funcao
     add_funcao(
         nome_funcao=funcao.nome_funcao,
         descricao=funcao.descricao,
         id_ministerio=id_ministerio,
-        tipo_funcao=funcao.tipo_funcao,  # <-- NOVO
-        prioridade_alocacao=funcao.prioridade_alocacao # <-- NOVO
+        tipo_funcao=funcao.tipo_funcao,
+        prioridade_alocacao=funcao.prioridade_alocacao
     )
     return {"status": "success", "message": f"Função '{funcao.nome_funcao}' criada."}
 
 @app.put("/funcoes/{id_funcao}", tags=["Funções"])
 def update_funcao_by_id(id_funcao: int, funcao: FuncaoUpdate):
-    # Passando os novos campos para a função update_funcao
     update_funcao(
         id_funcao=id_funcao,
         novo_nome=funcao.nome_funcao,
         nova_descricao=funcao.descricao,
-        novo_tipo=funcao.tipo_funcao, # <-- NOVO
-        nova_prioridade=funcao.prioridade_alocacao # <-- NOVO
+        novo_tipo=funcao.tipo_funcao,
+        nova_prioridade=funcao.prioridade_alocacao
     )
     return {"status": "success", "message": f"Função ID {id_funcao} atualizada."}
 
@@ -307,7 +323,12 @@ class VoluntarioUpdate(VoluntarioBase):
 
 @app.get("/ministerios/{id_ministerio}/voluntarios", tags=["Voluntários"])
 def get_voluntarios_por_ministerio(id_ministerio: int, inativos: bool = False):
-    df_voluntarios = view_all_voluntarios(id_ministerio, include_inactive=inativos)
+    # Agora chamamos a função que traz as listas de funcoes e disponibilidade!
+    df_voluntarios = get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=inativos)
+    
+    if df_voluntarios.empty:
+        return []
+        
     df_processado = df_voluntarios.replace({np.nan: None})
     return df_processado.to_dict('records')
 
@@ -346,7 +367,8 @@ def delete_voluntario_by_id(id_voluntario: int):
         raise HTTPException(status_code=500, detail="Erro de conexão com o banco de dados")
     try:
         with conn.cursor() as cur:
-            cur.execute("UPDATE voluntarios SET ativo = FALSE WHERE id_voluntario = %s", (id_voluntario,))
+            # MUDANÇA AQUI: Adicionamos ', data_inativacao = CURRENT_DATE'
+            cur.execute("UPDATE voluntarios SET ativo = FALSE, data_inativacao = CURRENT_DATE WHERE id_voluntario = %s", (id_voluntario,))
             if cur.rowcount == 0:
                 conn.rollback()
                 raise HTTPException(status_code=404, detail="Voluntário não encontrado")
@@ -606,66 +628,3 @@ def get_escala_pdf(id_ministerio: int, ano: int, mes: int, current_user: dict = 
     })
 
 
-@app.get("/ministerios/{id_ministerio}/dashboard", tags=["Dashboard"])
-def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_current_user)):
-    if current_user["id_ministerio"] != id_ministerio:
-        raise HTTPException(status_code=403, detail="Acesso não autorizado")
-
-    # Reutiliza suas funções existentes do database.py
-    voluntarios_df = get_all_voluntarios_com_detalhes(id_ministerio)
-    grupos_df = get_all_grupos_com_membros(id_ministerio)
-    funcoes_df = view_all_funcoes(id_ministerio)
-    eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
-    cotas_df = get_cotas_all_servicos()
-    
-    # Busca todos os voluntários (incluindo inativos) para a outra métrica
-    todos_voluntarios_com_inativos_df = view_all_voluntarios(id_ministerio, include_inactive=True)
-    voluntarios_inativos = todos_voluntarios_com_inativos_df[todos_voluntarios_com_inativos_df['ativo'] == False]
-
-    # --- LÓGICA ADICIONADA AQUI ---
-    # Encontra voluntários ativos sem nenhuma função
-    voluntarios_sem_funcao_df = voluntarios_df[voluntarios_df['funcoes'].apply(lambda x: not x)]
-    lista_voluntarios_sem_funcao = voluntarios_sem_funcao_df['nome_voluntario'].tolist()
-    
-    # Encontra voluntários ativos sem disponibilidade
-    voluntarios_sem_disponibilidade_df = voluntarios_df[voluntarios_df['disponibilidade'].apply(lambda x: not x)]
-    lista_voluntarios_sem_disponibilidade = voluntarios_sem_disponibilidade_df['nome_voluntario'].tolist()
-
-
-    total_vagas_mes = 0
-    if not eventos_mes_atual_df.empty:
-        for _, evento in eventos_mes_atual_df.iterrows():
-            total_vagas_mes += cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]['quantidade_necessaria'].sum()
-
-    niveis_contagem = {}
-    if not voluntarios_df.empty:
-        niveis_contagem = voluntarios_df['nivel_experiencia'].value_counts().to_dict()
-        
-    contagem_funcoes = {}
-    if not voluntarios_df.empty and not funcoes_df.empty:
-        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
-        contagem = defaultdict(int)
-        for funcoes_lista in voluntarios_df['funcoes']:
-            if funcoes_lista:
-                for id_funcao in funcoes_lista:
-                    nome_funcao = funcoes_map.get(id_funcao)
-                    if nome_funcao:
-                        contagem[nome_funcao] += 1
-        contagem_funcoes = dict(contagem)
-
-
-    return {
-        "kpis": {
-            "voluntarios_ativos": len(voluntarios_df),
-            "grupos": len(grupos_df),
-            "eventos_mes": len(eventos_mes_atual_df),
-            "vagas_mes": int(total_vagas_mes)
-        },
-        "grafico_niveis": niveis_contagem,
-        "grafico_funcoes": contagem_funcoes,
-        "pontos_atencao": {
-            "voluntarios_inativos": voluntarios_inativos['nome_voluntario'].tolist(),
-            "voluntarios_sem_funcao": lista_voluntarios_sem_funcao,
-            "voluntarios_sem_disponibilidade": lista_voluntarios_sem_disponibilidade
-        }
-    }

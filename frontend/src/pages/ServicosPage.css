@@ -75,11 +75,7 @@
   width: 300px;
 }
 
-.view-selector {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+
 
 .view-selector select {
   padding: 0.7rem;
@@ -88,4 +84,7 @@
   background-color: #262730;
   color: #f0f2f6;
   font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
