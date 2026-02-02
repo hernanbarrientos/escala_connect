@@ -66,6 +66,8 @@ var/
 .DS_Store
 Thumbs.db
 
+frontend/node_modules/
+
 
 # Arquivos de ambiente virtual do Python
 venv/
