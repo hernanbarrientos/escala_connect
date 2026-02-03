@@ -626,25 +626,29 @@ def view_all_voluntarios(id_ministerio, include_inactive=False):
     query += " ORDER BY nome_voluntario ASC"
     return pd.read_sql(query, conn, params=params)
 
-# No seu arquivo database.py ou onde a função está definida
 
-# No seu arquivo database.py ou onde a função está definida
-
-# No seu arquivo database.py ou onde a função está definida
-
-
-
-def get_all_voluntarios_com_detalhes(id_ministerio):
-    """ Busca todos os detalhes dos voluntários de um ministério específico. """
+def get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=False):
+    """ 
+    Busca TODOS os dados (nome, nível, funções, dias) para a tabela principal.
+    Aceita filtro de inativos.
+    """
     conn = ensure_connection()
     if conn is None: return pd.DataFrame()
     try:
-        query = """
+        # Define se filtramos apenas ativos ou pegamos tudo
+        filtro_ativo = "" if include_inactive else "AND v.ativo = TRUE"
+        
+        query = f"""
             SELECT
-                v.id_voluntario, v.nome_voluntario, v.limite_escalas_mes,
-                v.nivel_experiencia, v.id_grupo,
-                COALESCE(funcoes_agg.funcoes, '{}') AS funcoes,
-                COALESCE(disp_agg.disponibilidades, '{}') AS disponibilidade
+                v.id_voluntario, 
+                v.nome_voluntario, 
+                v.limite_escalas_mes,
+                v.nivel_experiencia, 
+                v.id_grupo,
+                v.ativo,
+                v.data_inativacao, -- IMPORTANTE: Trazendo a data para o Dashboard
+                COALESCE(funcoes_agg.funcoes, '{{}}') AS funcoes,
+                COALESCE(disp_agg.disponibilidades, '{{}}') AS disponibilidade
             FROM voluntarios v
             LEFT JOIN (
                 SELECT id_voluntario, array_agg(id_funcao) as funcoes
@@ -654,25 +658,23 @@ def get_all_voluntarios_com_detalhes(id_ministerio):
                 SELECT id_voluntario, array_agg(id_servico) as disponibilidades
                 FROM voluntario_disponibilidade GROUP BY id_voluntario
             ) AS disp_agg ON v.id_voluntario = disp_agg.id_voluntario
-            WHERE v.ativo = TRUE AND v.id_ministerio = %s;
+            WHERE v.id_ministerio = %s {filtro_ativo}
+            ORDER BY v.nome_voluntario ASC;
         """
         df = pd.read_sql(query, conn, params=(id_ministerio,))
 
-        # ======================================================================
-        # CORREÇÃO CRÍTICA ADICIONADA AQUI
-        # Garante que os itens dentro das listas sejam números inteiros.
         if not df.empty:
-            df['funcoes'] = df['funcoes'].apply(lambda arr: [int(f) for f in arr])
-            df['disponibilidade'] = df['disponibilidade'].apply(lambda arr: [int(f) for f in arr])
-        # ======================================================================
+            # Converte os arrays do PostgreSQL (que vêm como listas de strings ou ints) para lista de inteiros puros
+            # Isso corrige o bug do filtro (0) no frontend
+            df['funcoes'] = df['funcoes'].apply(lambda arr: [int(f) for f in arr] if arr else [])
+            df['disponibilidade'] = df['disponibilidade'].apply(lambda arr: [int(f) for f in arr] if arr else [])
 
         return df
     except Exception as e:
         print(f"Erro ao buscar dados detalhados dos voluntários: {e}")
         return pd.DataFrame()
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 
 

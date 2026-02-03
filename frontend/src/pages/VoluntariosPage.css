@@ -162,3 +162,40 @@
   background-color: rgba(255, 75, 75, 0.2);
   border: 3px solid var(--danger-color);
 }
+
+.filter-select {
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #414351;
+  background-color: #262730;
+  color: #f0f2f6;
+  font-size: 1rem;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.checkbox-item label{
+  margin-right: 0.5rem;
+}
+
+.label-select-box label{
+  margin-right: 1 rem;
+}
+
+.view-selector { display: flex; align-items: center; gap: 1rem; }
+.view-selector select {
+  padding: 0.7rem; border-radius: 8px; border: 1px solid var(--border-color);
+  background-color: #262730; color: var(--primary-text-color); font-size: 1rem;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.checkbox-item input[type="checkbox"] {
+  margin-right: 0.75rem;
+  width: 18px;
+  height: 18px;
+}

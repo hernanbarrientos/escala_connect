@@ -14,6 +14,7 @@
   margin-bottom: 0.5rem;
   color: #a0a3bd;
   font-weight: 500;
+  cursor: pointer;
 }
 
 .voluntario-form input[type="text"],
@@ -26,6 +27,7 @@
   background-color: #1c1c24;
   color: #f0f2f6;
   font-size: 1rem;
+  cursor: pointer;
 }
 
 .checkbox-group {
@@ -40,12 +42,14 @@
   display: flex;
   align-items: center;
   margin-bottom: 0.5rem;
+  cursor: pointer;
 }
 
 .checkbox-item input[type="checkbox"] {
   margin-right: 0.75rem;
   width: 18px;
   height: 18px;
+  cursor: pointer;
 }
 
 .form-group-checkbox {
@@ -53,6 +57,7 @@
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
+  cursor: pointer;
 }
 
 .form-actions {

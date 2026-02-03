@@ -149,57 +149,87 @@ def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_curr
     if current_user["id_ministerio"] != id_ministerio:
         raise HTTPException(status_code=403, detail="Acesso não autorizado")
 
-    # Usa a nova função "pura"
-    voluntarios_df = get_all_voluntarios_com_detalhes_puro(id_ministerio)
+    # 1. Carrega dados básicos
     grupos_df = get_all_grupos_com_membros(id_ministerio)
-    funcoes_df = view_all_funcoes(id_ministerio)
     eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
     cotas_df = get_cotas_all_servicos()
     
-    todos_voluntarios_com_inativos_df = view_all_voluntarios(id_ministerio, include_inactive=True)
-    voluntarios_inativos = todos_voluntarios_com_inativos_df[~todos_voluntarios_com_inativos_df['ativo']]
-
-    # --- LÓGICA CORRIGIDA E ADICIONADA ---
-    voluntarios_sem_funcao_df = voluntarios_df[voluntarios_df['funcoes'].apply(lambda x: not x)]
-    lista_voluntarios_sem_funcao = voluntarios_sem_funcao_df['nome_voluntario'].tolist()
+    # 2. Carrega voluntários COM DETALHES (incluindo inativos para calcular os dias off)
+    # Note que usamos include_inactive=True
+    todos_voluntarios = get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=True)
     
+    if todos_voluntarios.empty:
+        # Retorno seguro caso não tenha ninguém cadastrado
+        return {
+            "kpis": {"voluntarios_ativos": 0, "grupos": 0, "eventos_mes": 0, "vagas_mes": 0},
+            "grafico_niveis": {},
+            "grafico_funcoes": {},
+            "pontos_atencao": {"voluntarios_inativos": [], "voluntarios_sem_funcao": [], "voluntarios_sem_disponibilidade": []}
+        }
+
+    # Separa ativos e inativos
+    voluntarios_ativos = todos_voluntarios[todos_voluntarios['ativo'] == True]
+    voluntarios_inativos_df = todos_voluntarios[todos_voluntarios['ativo'] == False].copy()
+
+    # --- LÓGICA DE DIAS INATIVOS ---
+    lista_inativos_com_data = []
+    if not voluntarios_inativos_df.empty:
+        # Converte a coluna para datetime (trata erros)
+        voluntarios_inativos_df['data_inativacao'] = pd.to_datetime(voluntarios_inativos_df['data_inativacao'], errors='coerce')
+        
+        for _, row in voluntarios_inativos_df.iterrows():
+            data_str = None
+            if pd.notnull(row['data_inativacao']):
+                data_str = row['data_inativacao'].strftime('%Y-%m-%d')
+            
+            lista_inativos_com_data.append({
+                "nome": row['nome_voluntario'],
+                "data": data_str # Envia a data formatada ou None
+            })
+
+    # --- RESTANTE DAS MÉTRICAS ---
+    # Quem está ativo mas não tem função definida
+    # Verifica se a lista 'funcoes' está vazia
+    sem_funcao = voluntarios_ativos[voluntarios_ativos['funcoes'].apply(lambda x: len(x) == 0)]
+    lista_sem_funcao = sem_funcao['nome_voluntario'].tolist()
+
+    # Quem está ativo mas não tem disponibilidade (dias)
+    sem_disp = voluntarios_ativos[voluntarios_ativos['disponibilidade'].apply(lambda x: len(x) == 0)]
+    lista_sem_disp = sem_disp['nome_voluntario'].tolist()
+
     total_vagas_mes = 0
     if not eventos_mes_atual_df.empty:
         for _, evento in eventos_mes_atual_df.iterrows():
             total_vagas_mes += cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]['quantidade_necessaria'].sum()
 
-    niveis_contagem = {}
-    if not voluntarios_df.empty:
-        niveis_contagem = voluntarios_df['nivel_experiencia'].value_counts().to_dict()
-        
-    contagem_funcoes = {}
-    if not voluntarios_df.empty and not funcoes_df.empty:
-        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
-        contagem = defaultdict(int)
-        for funcoes_lista in voluntarios_df['funcoes']:
-            if funcoes_lista:
-                for id_funcao in funcoes_lista:
-                    nome_funcao = funcoes_map.get(id_funcao)
-                    if nome_funcao:
-                        contagem[nome_funcao] += 1
-        contagem_funcoes = dict(contagem)
+    niveis_contagem = voluntarios_ativos['nivel_experiencia'].value_counts().to_dict()
+
+    # Contagem de funções (precisa expandir as listas)
+    contagem_funcoes = defaultdict(int)
+    # Busca nomes das funções para o gráfico
+    funcoes_ref = view_all_funcoes(id_ministerio)
+    mapa_nomes_funcao = funcoes_ref.set_index('id_funcao')['nome_funcao'].to_dict()
+    
+    for lista_ids in voluntarios_ativos['funcoes']:
+        for id_f in lista_ids:
+            nome = mapa_nomes_funcao.get(id_f, f"ID {id_f}")
+            contagem_funcoes[nome] += 1
 
     return {
         "kpis": {
-            "voluntarios_ativos": len(voluntarios_df),
+            "voluntarios_ativos": len(voluntarios_ativos),
             "grupos": len(grupos_df),
             "eventos_mes": len(eventos_mes_atual_df),
             "vagas_mes": int(total_vagas_mes)
         },
         "grafico_niveis": niveis_contagem,
-        "grafico_funcoes": contagem_funcoes,
+        "grafico_funcoes": dict(contagem_funcoes),
         "pontos_atencao": {
-            "voluntarios_inativos": voluntarios_inativos['nome_voluntario'].tolist(),
-            "voluntarios_sem_funcao": lista_voluntarios_sem_funcao,
+            "voluntarios_inativos": lista_inativos_com_data, # Agora vai com data!
+            "voluntarios_sem_funcao": lista_sem_funcao,
+            "voluntarios_sem_disponibilidade": lista_sem_disp
         }
     }
-
-
 # --- Endpoints de Funções ---
 class FuncaoBase(BaseModel):
     nome_funcao: str
@@ -307,7 +337,9 @@ class VoluntarioUpdate(VoluntarioBase):
 
 @app.get("/ministerios/{id_ministerio}/voluntarios", tags=["Voluntários"])
 def get_voluntarios_por_ministerio(id_ministerio: int, inativos: bool = False):
-    df_voluntarios = view_all_voluntarios(id_ministerio, include_inactive=inativos)
+    df_voluntarios = get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=inativos)
+    
+    # Tratamento para JSON (Pandas NaN vira None)
     df_processado = df_voluntarios.replace({np.nan: None})
     return df_processado.to_dict('records')
 

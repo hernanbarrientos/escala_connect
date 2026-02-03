@@ -9,6 +9,7 @@ import './DashboardPage.css';
 ChartJS.register(ArcElement, Tooltip, Legend, Title, CategoryScale, LinearScale, BarElement);
 
 
+
 function DashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +30,15 @@ function DashboardPage() {
     };
     fetchData();
   }, []);
+
+  const calcularDiasInativo = (dataString) => {
+  if (!dataString) return null;
+  const dataInativacao = new Date(dataString);
+  const hoje = new Date();
+  const diffTime = Math.abs(hoje - dataInativacao);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  return diffDays;
+};
 
   // Otimização: useMemo evita que os dados do gráfico sejam recalculados a cada renderização
   const pieChartData = useMemo(() => {
@@ -125,13 +135,30 @@ function DashboardPage() {
           <h3>Voluntários Inativos</h3>
           {data.pontos_atencao.voluntarios_inativos.length > 0 ? (
             <>
-              <div className="warning-box">Você possui {data.pontos_atencao.voluntarios_inativos.length} voluntário(s) inativo(s).</div>
+              <div className="warning-box">
+                Você possui {data.pontos_atencao.voluntarios_inativos.length} voluntário(s) inativo(s).
+              </div>
               <ul>
-                {data.pontos_atencao.voluntarios_inativos.map(nome => <li key={nome}>{nome}</li>)}
+                {data.pontos_atencao.voluntarios_inativos.map((vol, index) => {
+                  // AQUI ESTAVA O ERRO: O frontend recebia um objeto 'vol' e tentava imprimir direto.
+                  // Agora acessamos vol.nome e vol.data corretamente.
+                  const dias = calcularDiasInativo(vol.data);
+                  
+                  return (
+                    <li key={index} className="inactive-item">
+                      <span className="name">{vol.nome}</span>
+                      {dias !== null && (
+                        <span style={{ marginLeft: '10px', color: '#ff6b6b', fontSize: '0.85em', fontWeight: 'bold' }}>
+                          ({dias} {dias === 1 ? 'dia' : 'dias'} off)
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </>
           ) : (
-             <div className="success-box">Ótimo! Nenhum voluntário inativo.</div>
+            <div className="success-box">Ótimo! Nenhum voluntário inativo.</div>
           )}
           <button onClick={() => navigate('/voluntarios')} className="manage-btn">Gerenciar voluntários</button>
         </div>
