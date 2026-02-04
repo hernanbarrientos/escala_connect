@@ -1,6 +1,7 @@
 // arquivo: frontend/src/pages/VoluntariosPage.jsx
 
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import Modal from '../components/Modal';
 import FormVoluntario from '../components/FormVoluntario';
@@ -11,6 +12,9 @@ import Spinner from '../components/Spinner';
 import './VoluntariosPage.css';
 
 function VoluntariosPage() {
+  const { id } = useParams(); // Pega o ID da URL (ex: 5)
+  const navigate = useNavigate();
+  const idMinisterio = id; // Agora usamos o ID dinâmico!
   // --- ESTADOS DE DADOS ---
   const [voluntarios, setVoluntarios] = useState([]);
   const [funcoes, setFuncoes] = useState([]);
@@ -150,7 +154,9 @@ function VoluntariosPage() {
     <div>
       <div className="page-header">
         <h1>Gerenciar Voluntários</h1>
-        <button onClick={handleOpenAddModal} className="add-btn">+ Adicionar Voluntário</button>
+  
+        <button onClick={() => navigate(`/ministerio/${id}`)} className="back-btn">← Voltar</button>
+        
       </div>
 
       <div className="controls-bar">

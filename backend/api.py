@@ -1,98 +1,20 @@
-
-
-import os
-from dotenv import load_dotenv
-
-# ==============================================================================
-# LÓGICA DE CARREGAMENTO DE AMBIENTE À PROVA DE FALHAS
-# Esta é a correção definitiva para o problema de .env
-# ==============================================================================
-# 1. Encontra o caminho absoluto para a pasta 'backend' onde este arquivo está
-base_dir = os.path.dirname(os.path.abspath(__file__))
-# 2. "Sobe" um nível para chegar na pasta raiz do projeto (escala_connect)
-project_root = os.path.dirname(base_dir)
-# 3. Monta o caminho completo e correto para o arquivo .env
-dotenv_path = os.path.join(project_root, '.env')
-
-# 4. Se o arquivo .env for encontrado nesse caminho, carrega as variáveis dele
-if os.path.exists(dotenv_path):
-    print(f"INFO: Carregando variáveis de ambiente do arquivo: {dotenv_path}")
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    print(f"INFO: Arquivo .env não encontrado em '{dotenv_path}'. Usando variáveis de ambiente do sistema (ideal para produção no Render).")
-# ==============================================================================
-from fastapi.responses import StreamingResponse
-from backend.pdf_generator import gerar_pdf_escala
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from backend.auth import create_access_token, get_current_user, Token
-import pandas as pd
 from pydantic import BaseModel
-from typing import Dict, List
-import numpy as np
+from typing import List, Optional
 from datetime import datetime
-from collections import defaultdict
-from backend.db_utils import verificar_login_puro
 
+# Imports internos
+from backend.auth import authenticate_user, create_access_token, get_current_user, get_password_hash
+from backend import database as db # O novo database.py sem pandas
 
-from backend.database import (
-    add_funcao,
-    add_servico_fixo,
-    add_voluntario,
-    atualizar_funcoes_do_voluntario,
-    create_grupo,
-    delete_funcao,
-    delete_grupo,
-    delete_servico_fixo,
-    ensure_connection,
-    gerar_escala_automatica,
-    get_all_grupos_com_membros,
-    get_all_ministerios,
-    get_all_voluntarios_com_detalhes,
-    get_cotas_for_servico,
-    get_cotas_all_servicos, # <-- Adicionada
-    get_disponibilidade_of_voluntario,
-    get_events_for_month,
-    create_events_for_month, # <-- Adicionada
-    update_escala_entry,
-    get_escala_completa,
-    get_funcoes_of_voluntario,
-    get_voluntario_by_id,
-    get_voluntarios_do_grupo,
-    get_voluntarios_sem_grupo,
-    update_cotas_servico,
-    update_disponibilidade_of_voluntario,
-    update_funcao,
-    update_grupo,
-    update_servico_fixo,
-    update_voluntario,
-    verificar_login,
-    # <-- Sua função de login
-    view_all_funcoes,
-    view_all_servicos_fixos,
-    view_all_voluntarios,
-    get_all_voluntarios_com_detalhes_puro,
-    # get_indisponibilidade_por_mes,
-    # update_indisponibilidade_por_mes,
-    get_indisponibilidade_eventos,
-    update_indisponibilidade_eventos,
-    get_voluntarios_elegiveis_para_vaga
-)
+app = FastAPI(title="Renovo HUB API", version="2.0.0")
 
-
-
-
-
-
-
-app = FastAPI(title="API da Escala Connect")
-
-# --- Configuração do CORS ---
+# --- CONFIGURAÇÃO CORS ---
 origins = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://escala-connect.vercel.app"
+    "https://seu-app-producao.vercel.app"
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -102,602 +24,151 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# NOVO ENDPOINT DE LOGIN
-@app.post("/token", response_model=Token, tags=["Autenticação"])
+# ==============================================================================
+# SCHEMAS (MODELOS DE DADOS) - Validação automática
+# ==============================================================================
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user_name: str
+    igreja_nome: str
+    role: str
+
+class MinisterioCreate(BaseModel):
+    nome: str
+    cor_hex: str = "#3b82f6"
+
+class MinisterioResponse(BaseModel):
+    id_ministerio: int
+    nome: str
+    cor_hex: str
+
+class DashboardStats(BaseModel):
+    total_voluntarios: int
+    total_eventos: int
+
+class VoluntarioSchema(BaseModel):
+    nome: str
+    email: str
+    telefone: Optional[str] = None
+    nivel: str = "Iniciante"
+    funcoes_ids: List[int] = []
+
+# ==============================================================================
+# ROTAS DE AUTENTICAÇÃO
+# ==============================================================================
+
+@app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    # Altere esta linha para chamar a função pura
-    id_ministerio = verificar_login_puro(form_data.username, form_data.password)
-    
-    if not id_ministerio:
+    """
+    Rota oficial de login. Recebe username (email) e password.
+    Retorna o JWT com os dados da Igreja embutidos.
+    """
+    user = await authenticate_user(form_data.username, form_data.password)
+    if not user:
         raise HTTPException(
-            status_code=401,
-            detail="Usuário ou senha incorretos",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou senha incorretos",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Cria o token com os dados vitais para o frontend
     access_token = create_access_token(
-        data={"sub": form_data.username, "id_ministerio": id_ministerio}
+        data={
+            "sub": user['email'],
+            "id_usuario": user['id_usuario'],
+            "id_igreja": user['id_igreja'],
+            "role": user['role']
+        }
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_name": user['nome'],
+        "igreja_nome": user['nome_igreja'], # O frontend vai amar isso
+        "role": user['role']
+    }
 
-# NOVO ENDPOINT PROTEGIDO (EXEMPLO)
-@app.get("/users/me", tags=["Autenticação"])
+@app.get("/me")
 async def read_users_me(current_user: dict = Depends(get_current_user)):
+    """Retorna os dados do usuário logado (para teste)."""
     return current_user
 
-# --- Endpoints da API ---
-@app.get("/")
-def read_root():
-    return {"Status": "API da Escala Connect está online"}
-
-# --- Endpoints de Ministérios ---
-@app.get("/ministerios", tags=["Ministérios"])
-def get_todos_ministerios():
-    conn = ensure_connection()
-    if conn is None:
-        raise HTTPException(status_code=500, detail="Não foi possível conectar ao banco de dados")
-    try:
-        query = "SELECT id_ministerio, nome_ministerio FROM ministerios ORDER BY nome_ministerio"
-        df = pd.read_sql(query, conn)
-        return df.to_dict('records')
-    finally:
-        if conn:
-            conn.close()
-
-# NOVO ENDPOINT DE DASHBOARD
-@app.get("/ministerios/{id_ministerio}/dashboard", tags=["Dashboard"])
-def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_current_user)):
-    if current_user["id_ministerio"] != id_ministerio:
-        raise HTTPException(status_code=403, detail="Acesso não autorizado")
-
-    # 1. Carrega dados básicos
-    grupos_df = get_all_grupos_com_membros(id_ministerio)
-    eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
-    cotas_df = get_cotas_all_servicos()
-    
-    # 2. Carrega voluntários COM DETALHES (incluindo inativos para calcular os dias off)
-    # Note que usamos include_inactive=True
-    todos_voluntarios = get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=True)
-    
-    if todos_voluntarios.empty:
-        # Retorno seguro caso não tenha ninguém cadastrado
-        return {
-            "kpis": {"voluntarios_ativos": 0, "grupos": 0, "eventos_mes": 0, "vagas_mes": 0},
-            "grafico_niveis": {},
-            "grafico_funcoes": {},
-            "pontos_atencao": {"voluntarios_inativos": [], "voluntarios_sem_funcao": [], "voluntarios_sem_disponibilidade": []}
-        }
-
-    # Separa ativos e inativos
-    voluntarios_ativos = todos_voluntarios[todos_voluntarios['ativo'] == True]
-    voluntarios_inativos_df = todos_voluntarios[todos_voluntarios['ativo'] == False].copy()
-
-    # --- LÓGICA DE DIAS INATIVOS ---
-    lista_inativos_com_data = []
-    if not voluntarios_inativos_df.empty:
-        # Converte a coluna para datetime (trata erros)
-        voluntarios_inativos_df['data_inativacao'] = pd.to_datetime(voluntarios_inativos_df['data_inativacao'], errors='coerce')
-        
-        for _, row in voluntarios_inativos_df.iterrows():
-            data_str = None
-            if pd.notnull(row['data_inativacao']):
-                data_str = row['data_inativacao'].strftime('%Y-%m-%d')
-            
-            lista_inativos_com_data.append({
-                "nome": row['nome_voluntario'],
-                "data": data_str # Envia a data formatada ou None
-            })
-
-    # --- RESTANTE DAS MÉTRICAS ---
-    # Quem está ativo mas não tem função definida
-    # Verifica se a lista 'funcoes' está vazia
-    sem_funcao = voluntarios_ativos[voluntarios_ativos['funcoes'].apply(lambda x: len(x) == 0)]
-    lista_sem_funcao = sem_funcao['nome_voluntario'].tolist()
-
-    # Quem está ativo mas não tem disponibilidade (dias)
-    sem_disp = voluntarios_ativos[voluntarios_ativos['disponibilidade'].apply(lambda x: len(x) == 0)]
-    lista_sem_disp = sem_disp['nome_voluntario'].tolist()
-
-    total_vagas_mes = 0
-    if not eventos_mes_atual_df.empty:
-        for _, evento in eventos_mes_atual_df.iterrows():
-            total_vagas_mes += cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]['quantidade_necessaria'].sum()
-
-    niveis_contagem = voluntarios_ativos['nivel_experiencia'].value_counts().to_dict()
-
-    # Contagem de funções (precisa expandir as listas)
-    contagem_funcoes = defaultdict(int)
-    # Busca nomes das funções para o gráfico
-    funcoes_ref = view_all_funcoes(id_ministerio)
-    mapa_nomes_funcao = funcoes_ref.set_index('id_funcao')['nome_funcao'].to_dict()
-    
-    for lista_ids in voluntarios_ativos['funcoes']:
-        for id_f in lista_ids:
-            nome = mapa_nomes_funcao.get(id_f, f"ID {id_f}")
-            contagem_funcoes[nome] += 1
-
-    return {
-        "kpis": {
-            "voluntarios_ativos": len(voluntarios_ativos),
-            "grupos": len(grupos_df),
-            "eventos_mes": len(eventos_mes_atual_df),
-            "vagas_mes": int(total_vagas_mes)
-        },
-        "grafico_niveis": niveis_contagem,
-        "grafico_funcoes": dict(contagem_funcoes),
-        "pontos_atencao": {
-            "voluntarios_inativos": lista_inativos_com_data, # Agora vai com data!
-            "voluntarios_sem_funcao": lista_sem_funcao,
-            "voluntarios_sem_disponibilidade": lista_sem_disp
-        }
-    }
-# --- Endpoints de Funções ---
-class FuncaoBase(BaseModel):
-    nome_funcao: str
-    descricao: str = ""
-    tipo_funcao: str
-    prioridade_alocacao: int
-
-# O modelo de criação herda todos os campos da classe base
-class FuncaoCreate(FuncaoBase):
-    pass
-
-# O modelo de atualização também herda todos os campos
-class FuncaoUpdate(FuncaoBase):
-    pass
-    
-
-@app.get("/ministerios/{id_ministerio}/funcoes", tags=["Funções"])
-def get_funcoes_por_ministerio(id_ministerio: int):
-    df_funcoes = view_all_funcoes(id_ministerio)
-    return df_funcoes.to_dict('records')
-
-@app.post("/ministerios/{id_ministerio}/funcoes", tags=["Funções"])
-def create_funcao_no_ministerio(id_ministerio: int, funcao: FuncaoCreate):
-    # Passando os novos campos para a função add_funcao
-    add_funcao(
-        nome_funcao=funcao.nome_funcao,
-        descricao=funcao.descricao,
-        id_ministerio=id_ministerio,
-        tipo_funcao=funcao.tipo_funcao,  # <-- NOVO
-        prioridade_alocacao=funcao.prioridade_alocacao # <-- NOVO
-    )
-    return {"status": "success", "message": f"Função '{funcao.nome_funcao}' criada."}
-
-@app.put("/funcoes/{id_funcao}", tags=["Funções"])
-def update_funcao_by_id(id_funcao: int, funcao: FuncaoUpdate):
-    # Passando os novos campos para a função update_funcao
-    update_funcao(
-        id_funcao=id_funcao,
-        novo_nome=funcao.nome_funcao,
-        nova_descricao=funcao.descricao,
-        novo_tipo=funcao.tipo_funcao, # <-- NOVO
-        nova_prioridade=funcao.prioridade_alocacao # <-- NOVO
-    )
-    return {"status": "success", "message": f"Função ID {id_funcao} atualizada."}
-
-@app.delete("/funcoes/{id_funcao}", tags=["Funções"])
-def delete_funcao_by_id(id_funcao: int):
-    delete_funcao(id_funcao)
-    return {"status": "success", "message": f"Função ID {id_funcao} excluída."}
-
-# --- Endpoints de Serviços e Cotas ---
-class ServicoCreate(BaseModel):
-    nome_servico: str
-    dia_da_semana: int
-class ServicoUpdate(BaseModel):
-    nome_servico: str
-    dia_da_semana: int
-    ativo: bool
-class CotasUpdate(BaseModel):
-    cotas: Dict[int, int]
-
-
-@app.get("/ministerios/{id_ministerio}/servicos", tags=["Serviços"])
-def get_servicos_por_ministerio(id_ministerio: int):
-    df_servicos = view_all_servicos_fixos(id_ministerio)
-    return df_servicos.to_dict('records')
-
-@app.post("/ministerios/{id_ministerio}/servicos", tags=["Serviços"])
-def create_servico_no_ministerio(id_ministerio: int, servico: ServicoCreate):
-    add_servico_fixo(nome=servico.nome_servico, dia_da_semana=servico.dia_da_semana, id_ministerio=id_ministerio)
-    return {"status": "success", "message": f"Serviço '{servico.nome_servico}' criado."}
-
-@app.put("/servicos/{id_servico}", tags=["Serviços"])
-def update_servico_by_id(id_servico: int, servico: ServicoUpdate):
-    update_servico_fixo(id_servico=id_servico, nome=servico.nome_servico, dia_da_semana=servico.dia_da_semana, ativo=servico.ativo)
-    return {"status": "success", "message": f"Serviço ID {id_servico} atualizado."}
-
-@app.delete("/servicos/{id_servico}", tags=["Serviços"])
-def delete_servico_by_id(id_servico: int):
-    delete_servico_fixo(id_servico)
-    return {"status": "success", "message": f"Serviço ID {id_servico} excluído."}
-
-@app.get("/servicos/{id_servico}/cotas", tags=["Serviços"])
-def get_cotas_do_servico(id_servico: int):
-    cotas = get_cotas_for_servico(id_servico)
-    return cotas
-
-@app.put("/servicos/{id_servico}/cotas", tags=["Serviços"])
-def update_cotas_do_servico(id_servico: int, cotas_data: CotasUpdate):
-    update_cotas_servico(id_servico, cotas_data.cotas)
-    return {"status": "success", "message": f"Cotas do serviço ID {id_servico} atualizadas."}
-
-# --- Endpoints de Voluntários ---
-class VoluntarioBase(BaseModel):
-    nome_voluntario: str
-    limite_escalas_mes: int
-    nivel_experiencia: str
-    ativo: bool = True
-    funcoes_ids: List[int] = []
-    disponibilidade_ids: List[int] = []
-class VoluntarioCreate(VoluntarioBase):
-    pass
-class VoluntarioUpdate(VoluntarioBase):
-    pass
-
-@app.get("/ministerios/{id_ministerio}/voluntarios", tags=["Voluntários"])
-def get_voluntarios_por_ministerio(id_ministerio: int, inativos: bool = False):
-    df_voluntarios = get_all_voluntarios_com_detalhes(id_ministerio, include_inactive=inativos)
-    
-    # Tratamento para JSON (Pandas NaN vira None)
-    df_processado = df_voluntarios.replace({np.nan: None})
-    return df_processado.to_dict('records')
-
-@app.get("/voluntarios/{id_voluntario}/detalhes", tags=["Voluntários"])
-def get_detalhes_do_voluntario(id_voluntario: int):
-    dados_principais = get_voluntario_by_id(id_voluntario)
-    if dados_principais is None:
-        raise HTTPException(status_code=404, detail="Voluntário não encontrado")
-    funcoes_ids = get_funcoes_of_voluntario(id_voluntario)
-    disponibilidade_ids = get_disponibilidade_of_voluntario(id_voluntario)
-    resposta = dados_principais.to_dict()
-    resposta['funcoes_ids'] = funcoes_ids
-    resposta['disponibilidade_ids'] = disponibilidade_ids
-    return resposta
-
-@app.post("/ministerios/{id_ministerio}/voluntarios", tags=["Voluntários"])
-def create_voluntario_no_ministerio(id_ministerio: int, voluntario: VoluntarioCreate):
-    id_novo_voluntario = add_voluntario(nome=voluntario.nome_voluntario, limite_mes=voluntario.limite_escalas_mes, nivel_experiencia=voluntario.nivel_experiencia, id_ministerio=id_ministerio)
-    if id_novo_voluntario is None:
-        raise HTTPException(status_code=500, detail="Erro ao criar o registro principal do voluntário.")
-    atualizar_funcoes_do_voluntario(id_novo_voluntario, voluntario.funcoes_ids)
-    update_disponibilidade_of_voluntario(id_novo_voluntario, voluntario.disponibilidade_ids)
-    return {"status": "success", "message": f"Voluntário '{voluntario.nome_voluntario}' criado com sucesso.", "id_voluntario": id_novo_voluntario}
-
-@app.put("/voluntarios/{id_voluntario}", tags=["Voluntários"])
-def update_voluntario_by_id(id_voluntario: int, voluntario: VoluntarioUpdate):
-    update_voluntario(id_voluntario=id_voluntario, nome=voluntario.nome_voluntario, limite_mes=voluntario.limite_escalas_mes, ativo=voluntario.ativo, nivel_experiencia=voluntario.nivel_experiencia)
-    atualizar_funcoes_do_voluntario(id_voluntario, voluntario.funcoes_ids)
-    update_disponibilidade_of_voluntario(id_voluntario, voluntario.disponibilidade_ids)
-    return {"status": "success", "message": f"Voluntário ID {id_voluntario} atualizado."}
-
-@app.delete("/voluntarios/{id_voluntario}", tags=["Voluntários"])
-def delete_voluntario_by_id(id_voluntario: int):
-    conn = ensure_connection()
-    if conn is None:
-        raise HTTPException(status_code=500, detail="Erro de conexão com o banco de dados")
-    try:
-        with conn.cursor() as cur:
-            cur.execute("UPDATE voluntarios SET ativo = FALSE WHERE id_voluntario = %s", (id_voluntario,))
-            if cur.rowcount == 0:
-                conn.rollback()
-                raise HTTPException(status_code=404, detail="Voluntário não encontrado")
-        conn.commit()
-        return {"status": "success", "message": f"Voluntário ID {id_voluntario} inativado."}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Erro no servidor: {e}")
-    finally:
-        if conn:
-            conn.close()
-
-
-    # --- ENDPOINTS DE INDISPONIBILIDADE VOLUNTÁRIOS---
-
-class IndisponibilidadeUpdate(BaseModel):
-    eventos_ids: List[int]
-
-@app.get("/voluntarios/{id_voluntario}/eventos-disponiveis/{ano}/{mes}", tags=["Voluntários"])
-def get_eventos_disponiveis_para_voluntario(id_voluntario: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
-    servicos_disponiveis_ids = get_disponibilidade_of_voluntario(id_voluntario)
-    id_ministerio = current_user['id_ministerio']
-    eventos_do_mes_df = get_events_for_month(ano, mes, id_ministerio)
-    if eventos_do_mes_df.empty or not servicos_disponiveis_ids:
-        return []
-    eventos_relevantes_df = eventos_do_mes_df[eventos_do_mes_df['id_servico_fixo'].isin(servicos_disponiveis_ids)]
-    return eventos_relevantes_df.to_dict('records')
-
-@app.get("/voluntarios/{id_voluntario}/indisponibilidade/{ano}/{mes}", tags=["Voluntários"])
-def get_voluntario_indisponibilidade(id_voluntario: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
-    eventos_ids = get_indisponibilidade_eventos(id_voluntario, ano, mes)
-    return {"eventos_ids": eventos_ids}
-
-@app.put("/voluntarios/{id_voluntario}/indisponibilidade/{ano}/{mes}", tags=["Voluntários"])
-def update_voluntario_indisponibilidade(id_voluntario: int, ano: int, mes: int, data: IndisponibilidadeUpdate, current_user: dict = Depends(get_current_user)):
-    sucesso = update_indisponibilidade_eventos(id_voluntario, ano, mes, data.eventos_ids)
-    if not sucesso:
-        raise HTTPException(status_code=500, detail="Falha ao salvar indisponibilidades no banco de dados.")
-    return {"status": "success", "message": "Indisponibilidades atualizadas com sucesso."}
- 
-# --- Endpoints de Vínculos (Grupos) ---
-class GrupoBase(BaseModel):
-    nome_grupo: str
-    limite_escalas_grupo: int
-    membros_ids: List[int]
-class GrupoCreate(GrupoBase):
-    pass
-class GrupoUpdate(GrupoBase):
-    pass
-
-@app.get("/ministerios/{id_ministerio}/grupos", tags=["Vínculos"])
-def get_grupos_por_ministerio(id_ministerio: int):
-    df_grupos = get_all_grupos_com_membros(id_ministerio)
-    return df_grupos.to_dict('records')
-
-@app.get("/ministerios/{id_ministerio}/voluntarios-sem-grupo", tags=["Vínculos"])
-def get_voluntarios_livres_por_ministerio(id_ministerio: int):
-    df_voluntarios = get_voluntarios_sem_grupo(id_ministerio)
-    return df_voluntarios.to_dict('records')
-
-# << FUNÇÃO COM A INDENTAÇÃO CORRIGIDA >>
-@app.get("/grupos/{id_grupo}/detalhes", tags=["Vínculos"])
-def get_detalhes_do_grupo(id_grupo: int):
-    """Retorna os dados de um grupo e os detalhes de seus membros."""
-    conn = ensure_connection()
-    if conn is None:
-        raise HTTPException(status_code=500, detail="Erro de conexão com o banco de dados")
-    
-    try:
-        query_grupo = "SELECT * FROM grupos_vinculados WHERE id_grupo = %s"
-        grupo_info_df = pd.read_sql(query_grupo, conn, params=(id_grupo,))
-        
-        if grupo_info_df.empty:
-            raise HTTPException(status_code=404, detail="Grupo não encontrado")
-            
-        membros_df = get_voluntarios_do_grupo(id_grupo)
-        
-        resposta = grupo_info_df.to_dict('records')[0]
-        resposta['membros'] = membros_df.to_dict('records')
-
-        return resposta
-    finally:
-        if conn:
-            conn.close()
-
-@app.post("/ministerios/{id_ministerio}/grupos", tags=["Vínculos"])
-def create_grupo_no_ministerio(id_ministerio: int, grupo: GrupoCreate):
-    if len(grupo.membros_ids) < 2:
-        raise HTTPException(status_code=400, detail="Um grupo precisa de pelo menos 2 membros.")
-    create_grupo(nome_grupo=grupo.nome_grupo, ids_membros=grupo.membros_ids, id_ministerio=id_ministerio, limite_grupo=grupo.limite_escalas_grupo)
-    return {"status": "success", "message": f"Grupo '{grupo.nome_grupo}' criado com sucesso."}
-
-@app.put("/grupos/{id_grupo}", tags=["Vínculos"])
-def update_grupo_by_id(id_grupo: int, grupo: GrupoUpdate):
-    if len(grupo.membros_ids) < 2:
-        raise HTTPException(status_code=400, detail="Um grupo precisa de pelo menos 2 membros.")
-    update_grupo(id_grupo=id_grupo, novo_nome=grupo.nome_grupo, ids_membros_novos=grupo.membros_ids, novo_limite=grupo.limite_escalas_grupo)
-    return {"status": "success", "message": f"Grupo ID {id_grupo} atualizado com sucesso."}
-
-@app.delete("/grupos/{id_grupo}", tags=["Vínculos"])
-def delete_grupo_by_id(id_grupo: int):
-    delete_grupo(id_grupo)
-    return {"status": "success", "message": f"Grupo ID {id_grupo} excluído com sucesso."}
-
 # ==============================================================================
-# NOVOS ENDPOINTS PARA GERAR E VISUALIZAR A ESCALA
+# ROTAS DA IGREJA & MINISTÉRIOS (O HUB)
 # ==============================================================================
 
-# # --- Modelo Pydantic para a requisição ---
-# class EscalaRequest(BaseModel):
-#     ano: int
-#     mes: int
+@app.get("/igreja/dashboard", response_model=DashboardStats)
+def get_dashboard_igreja(current_user: dict = Depends(get_current_user)):
+    """Retorna números gerais da igreja (não apenas de um ministério)."""
+    stats = db.get_dashboard_stats(current_user['id_igreja'])
+    return stats
 
-# # --- Endpoints ---
+@app.get("/igreja/ministerios", response_model=List[MinisterioResponse])
+def listar_ministerios(current_user: dict = Depends(get_current_user)):
+    """
+    Lista todos os ministérios ativos da igreja do usuário logado.
+    Usado para preencher o Menu Lateral ou a Tela Inicial do HUB.
+    """
+    ministerios = db.get_ministerios_da_igreja(current_user['id_igreja'])
+    return ministerios
 
+@app.post("/igreja/ministerios", status_code=201)
+def criar_ministerio(ministerio: MinisterioCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Cria um novo ministério na igreja.
+    """
+    # Verifica se é admin (opcional, por enquanto todo líder pode criar)
+    # if current_user['role'] != 'ADMIN_GERAL': raise HTTPException...
 
+    query = """
+        INSERT INTO ministerios (id_igreja, nome, cor_hex)
+        VALUES (%s, %s, %s)
+        RETURNING id_ministerio, nome, cor_hex;
+    """
+    params = (current_user['id_igreja'], ministerio.nome, ministerio.cor_hex)
+    
+    novo_min = db.execute_modify(query, params)
+    
+    if not novo_min:
+        raise HTTPException(status_code=500, detail="Erro ao criar ministério")
+        
+    return novo_min
 
-# --- Modelo Pydantic para a requisição ---
-class EscalaRequest(BaseModel):
-    ano: int
-    mes: int
+# ==============================================================================
+# ROTAS DE GESTÃO DO MINISTÉRIO (VOLUNTÁRIOS)
+# ==============================================================================
 
+@app.get("/ministerios/{id_ministerio}/voluntarios")
+def listar_voluntarios(id_ministerio: int, current_user: dict = Depends(get_current_user)):
+    # TODO: Verificar se current_user pertence à mesma igreja do ministério (Segurança)
+    voluntarios = db.get_voluntarios_do_ministerio(id_ministerio)
+    return voluntarios
 
-@app.post("/ministerios/{id_ministerio}/eventos/criar", tags=["Eventos"])
-def endpoint_criar_eventos(
-    id_ministerio: int,
-    request_data: EscalaRequest,
+@app.get("/ministerios/{id_ministerio}/funcoes")
+def listar_funcoes(id_ministerio: int, current_user: dict = Depends(get_current_user)):
+    return db.get_funcoes_ministerio(id_ministerio)
+
+@app.post("/ministerios/{id_ministerio}/voluntarios", status_code=201)
+def cadastrar_voluntario(
+    id_ministerio: int, 
+    dados: VoluntarioSchema, 
     current_user: dict = Depends(get_current_user)
 ):
-    if current_user["id_ministerio"] != id_ministerio:
-        raise HTTPException(status_code=403, detail="Acesso não autorizado")
-
-    # Chama a função do database.py que você já tinha no projeto antigo
-    sucesso = create_events_for_month(request_data.ano, request_data.mes, id_ministerio)
-    
-    if sucesso:
-        return {
-            "status": "success",
-            "message": f"Eventos para {request_data.mes}/{request_data.ano} criados com sucesso!"
-        }
-    else:
-        raise HTTPException(status_code=500, detail="Falha ao criar os eventos. Verifique os logs do backend.")
-
-
-@app.get("/ministerios/{id_ministerio}/escala/{ano}/{mes}", tags=["Escala"])
-def endpoint_get_escala(id_ministerio: int, ano: int, mes: int):
     """
-    Busca a escala completa já gerada para um mês e ano específicos.
+    Cadastra um voluntário novo ou vincula um existente ao ministério.
     """
-    escala_df = get_escala_completa(ano, mes, id_ministerio)
-    if escala_df.empty:
-        return []  # Retorna lista vazia se não houver escala
+    resultado = db.adicionar_voluntario_vinculo(id_ministerio, current_user['id_igreja'], dados)
     
-    # Substitui valores NaN por None para compatibilidade com JSON
-    df_processado = escala_df.replace({np.nan: None})
-    return df_processado.to_dict("records")
-
-
-@app.post("/ministerios/{id_ministerio}/escala/gerar", tags=["Escala"])
-def endpoint_gerar_escala(
-    id_ministerio: int,
-    request_data: EscalaRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    if current_user["id_ministerio"] != id_ministerio:
-        raise HTTPException(status_code=403, detail="Acesso não autorizado")
-
-    try:
-        gerar_escala_automatica(request_data.ano, request_data.mes, id_ministerio)
-        return {"status": "success", "message": "Escala gerada com sucesso!"}
-    except Exception:
-        raise HTTPException(status_code=500, detail="Ocorreu um erro interno ao gerar a escala.")
-
-
-# --- NOVO: Modelo Pydantic para a atualização da vaga ---
-class VagaUpdate(BaseModel):
-    id_evento: int
-    id_funcao: int
-    funcao_instancia: int
-    id_voluntario: int | None # Permite que seja None para deixar a vaga "VAGA"
-
-# ==============================================================================
-# NOVOS ENDPOINTS PARA EDIÇÃO DA ESCALA
-# ==============================================================================
-
-@app.get("/funcoes/{id_funcao}/voluntarios", tags=["Voluntários"])
-def get_voluntarios_por_funcao(id_funcao: int):
-    """ Busca todos os voluntários aptos para exercer uma função específica. """
-    conn = ensure_connection()
-    if conn is None: return []
-    try:
-        # Precisamos de uma função no database.py para isso, vamos criá-la se não existir
-        query = """
-            SELECT v.id_voluntario, v.nome_voluntario
-            FROM voluntarios v
-            JOIN voluntario_funcoes vf ON v.id_voluntario = vf.id_voluntario
-            WHERE v.ativo = TRUE AND vf.id_funcao = %s
-            ORDER BY v.nome_voluntario;
-        """
-        df = pd.read_sql(query, conn, params=(id_funcao,))
-        return df.to_dict('records')
-    finally:
-        if conn:
-            conn.close()
-
-
-@app.put("/escala/vaga", tags=["Escala"])
-def update_vaga_na_escala(vaga: VagaUpdate):
-    """ Atualiza uma única vaga na escala com um novo voluntário. """
-    try:
-        update_escala_entry(
-            id_evento=vaga.id_evento,
-            id_funcao=vaga.id_funcao,
-            id_voluntario=vaga.id_voluntario,
-            instancia=vaga.funcao_instancia
-        )
-        return {"status": "success", "message": "Vaga atualizada com sucesso."}
-    except Exception as e:
-        # <<<< MUDANÇA IMPORTANTE: Imprime o erro detalhado no console do backend >>>>
-        print("\n--- ERRO DETALHADO NO ENDPOINT /escala/vaga ---")
-        print(f"Tipo do Erro: {type(e)}")
-        print(f"Argumentos do Erro: {e.args}")
-        import traceback
-        traceback.print_exc() # Imprime o traceback completo
-        print("--- FIM DO ERRO DETALHADO ---\n")
+    if not resultado:
+        raise HTTPException(status_code=400, detail="Erro ao cadastrar voluntário. Talvez ele já esteja vinculado.")
         
-        # Continua retornando o erro 500 para o frontend
-        raise HTTPException(status_code=500, detail=f"Erro interno no servidor. Verifique o console do backend.")
-
-@app.get("/escala/vaga-elegiveis", tags=["Escala"])
-def get_voluntarios_elegiveis(id_funcao: int, id_evento: int, current_user: dict = Depends(get_current_user)):
-    """ Retorna uma lista de voluntários elegíveis para uma vaga específica. """
-    id_ministerio = current_user["id_ministerio"]
-    df = get_voluntarios_elegiveis_para_vaga(id_funcao, id_evento, id_ministerio)
-    return df.to_dict('records')
+    return {"msg": "Voluntário vinculado com sucesso!"}
 
 
-# ==============================================================================
-# NOVOS ENDPOINTS PARA GERAR PDF
-# ==============================================================================
-@app.get("/ministerios/{id_ministerio}/escala/{ano}/{mes}/pdf", tags=["Escala"])
-def get_escala_pdf(id_ministerio: int, ano: int, mes: int, current_user: dict = Depends(get_current_user)):
-    if current_user["id_ministerio"] != id_ministerio:
-        raise HTTPException(status_code=403, detail="Acesso não autorizado")
-
-    escala_df = get_escala_completa(ano, mes, id_ministerio)
-    servicos_df = view_all_servicos_fixos(id_ministerio)
-    
-    meses_pt = { 1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
-    7: "Julho", 8: "Agosto", 9: "Setembro",10: "Outubro", 11: "Novembro", 12: "Dezembro" }
-    mes_ano_str = f"{meses_pt.get(mes, '')} de {ano}"
-    
-    pdf_buffer = gerar_pdf_escala(escala_df, mes_ano_str, servicos_df)
-    
-    return StreamingResponse(pdf_buffer, media_type="application/pdf", headers={
-        "Content-Disposition": f"attachment; filename=escala_{ano}_{mes}.pdf"
-    })
-
-
-@app.get("/ministerios/{id_ministerio}/dashboard", tags=["Dashboard"])
-def get_dashboard_data(id_ministerio: int, current_user: dict = Depends(get_current_user)):
-    if current_user["id_ministerio"] != id_ministerio:
-        raise HTTPException(status_code=403, detail="Acesso não autorizado")
-
-    # Reutiliza suas funções existentes do database.py
-    voluntarios_df = get_all_voluntarios_com_detalhes(id_ministerio)
-    grupos_df = get_all_grupos_com_membros(id_ministerio)
-    funcoes_df = view_all_funcoes(id_ministerio)
-    eventos_mes_atual_df = get_events_for_month(datetime.now().year, datetime.now().month, id_ministerio)
-    cotas_df = get_cotas_all_servicos()
-    
-    # Busca todos os voluntários (incluindo inativos) para a outra métrica
-    todos_voluntarios_com_inativos_df = view_all_voluntarios(id_ministerio, include_inactive=True)
-    voluntarios_inativos = todos_voluntarios_com_inativos_df[todos_voluntarios_com_inativos_df['ativo'] == False]
-
-    # --- LÓGICA ADICIONADA AQUI ---
-    # Encontra voluntários ativos sem nenhuma função
-    voluntarios_sem_funcao_df = voluntarios_df[voluntarios_df['funcoes'].apply(lambda x: not x)]
-    lista_voluntarios_sem_funcao = voluntarios_sem_funcao_df['nome_voluntario'].tolist()
-    
-    # Encontra voluntários ativos sem disponibilidade
-    voluntarios_sem_disponibilidade_df = voluntarios_df[voluntarios_df['disponibilidade'].apply(lambda x: not x)]
-    lista_voluntarios_sem_disponibilidade = voluntarios_sem_disponibilidade_df['nome_voluntario'].tolist()
-
-
-    total_vagas_mes = 0
-    if not eventos_mes_atual_df.empty:
-        for _, evento in eventos_mes_atual_df.iterrows():
-            total_vagas_mes += cotas_df[cotas_df['id_servico'] == evento['id_servico_fixo']]['quantidade_necessaria'].sum()
-
-    niveis_contagem = {}
-    if not voluntarios_df.empty:
-        niveis_contagem = voluntarios_df['nivel_experiencia'].value_counts().to_dict()
-        
-    contagem_funcoes = {}
-    if not voluntarios_df.empty and not funcoes_df.empty:
-        funcoes_map = funcoes_df.set_index('id_funcao')['nome_funcao'].to_dict()
-        contagem = defaultdict(int)
-        for funcoes_lista in voluntarios_df['funcoes']:
-            if funcoes_lista:
-                for id_funcao in funcoes_lista:
-                    nome_funcao = funcoes_map.get(id_funcao)
-                    if nome_funcao:
-                        contagem[nome_funcao] += 1
-        contagem_funcoes = dict(contagem)
-
-
-    return {
-        "kpis": {
-            "voluntarios_ativos": len(voluntarios_df),
-            "grupos": len(grupos_df),
-            "eventos_mes": len(eventos_mes_atual_df),
-            "vagas_mes": int(total_vagas_mes)
-        },
-        "grafico_niveis": niveis_contagem,
-        "grafico_funcoes": contagem_funcoes,
-        "pontos_atencao": {
-            "voluntarios_inativos": voluntarios_inativos['nome_voluntario'].tolist(),
-            "voluntarios_sem_funcao": lista_voluntarios_sem_funcao,
-            "voluntarios_sem_disponibilidade": lista_voluntarios_sem_disponibilidade
-        }
-    }
+@app.get("/ministerios/{id_ministerio}/servicos")
+def listar_servicos(id_ministerio: int, current_user: dict = Depends(get_current_user)):
+    """Rota que faltava para o frontend carregar!"""
+    return db.get_servicos_ministerio(id_ministerio)
